@@ -1,0 +1,13 @@
+numpy
+scipy
+tensorflow
+scikit-learn
+scikit-image
+h5py
+image
+sacred
+opencv-python
+pandas
+seaborn
+joblib
+jupyterthemes
