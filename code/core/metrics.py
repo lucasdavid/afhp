@@ -44,8 +44,10 @@ class SupervisedContrastiveLoss(tf.losses.Loss):
     self.temperature = temperature
 
   def call(self, labels, features):
+    print(f'[SupervisedContrastiveLoss tracing] labels:{labels.shape} features:{features.shape}')
+
     logits = tf.matmul(features, features, transpose_b=True)
-    
+
     return tfa.losses.npairs_loss(
         tf.squeeze(labels),
         logits / self.temperature

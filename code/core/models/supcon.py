@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
 
 
 class ProjectionHead(tf.keras.layers.Layer):
@@ -13,16 +13,15 @@ class ProjectionHead(tf.keras.layers.Layer):
       proj1_units=2048,
       proj2_units=128,
       normalize_output=True,
-      proj_kwargs=None,
+      pr_ks=None,
       **kwargs
   ):
     super().__init__(**kwargs)
 
-    proj_kwargs = proj_kwargs or {}
-
     ki = tf.random_normal_initializer(stddev=.01)
-    self.proj_1 = Dense(proj1_units, activation='relu', kernel_initializer=ki, **proj_kwargs)
-    self.proj_2 = Dense(proj2_units, activation='relu', kernel_initializer=ki, **proj_kwargs)
+    pr_ks = pr_ks or {}
+    self.proj_1 = Dense(proj1_units, activation='relu', kernel_initializer=ki, **pr_ks)
+    self.proj_2 = Dense(proj2_units, activation='relu', kernel_initializer=ki, **pr_ks)
 
     self.proj1_units = proj1_units
     self.proj2_units = proj2_units
@@ -57,7 +56,7 @@ def supcon_encoder_network(
   if normalize_stem_output:
     y = tf.math.l2_normalize(y, axis=1)
   
-  artist_projection_head = artist_projection_head or ProjectionHead(name='artist_project_head', proj_kwargs=head_proj_kwargs)
+  artist_projection_head = artist_projection_head or ProjectionHead(name='artist_project_head', pr_ks=head_proj_kwargs)
   artist = artist_projection_head(y)
 
   return tf.keras.Model(inputs=input_tensor, outputs=artist, **kwargs)
@@ -66,6 +65,7 @@ def supcon_encoder_network(
 def supcon_encoder_multitask_network(
   input_tensor,
   backbone,
+  pooling='avg',
   artist_projection_head=None,
   style_projection_head=None,
   genre_projection_head=None,
@@ -78,6 +78,9 @@ def supcon_encoder_multitask_network(
 
   y = backbone(input_tensor)
 
+  if pooling == 'avg':
+    y = GlobalAveragePooling2D(name='avg_pool')(y)
+
   if normalize_stem_output:
     y = tf.math.l2_normalize(y, axis=1)
   
@@ -85,7 +88,14 @@ def supcon_encoder_multitask_network(
   style = style_projection_head(y)
   genre = genre_projection_head(y)
 
-  return tf.keras.Model(inputs=input_tensor, outputs=[artist, style, genre], **kwargs)
+  return tf.keras.Model(
+    inputs=input_tensor,
+    outputs={
+      'artist': artist,
+      'style': style,
+      'genre': genre
+    },
+    **kwargs)
 
 
 class SADH(tf.keras.layers.Layer):

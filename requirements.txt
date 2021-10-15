@@ -1,6 +1,8 @@
 numpy
 scipy
 tensorflow
+tensorflow-datasets
+tensorflow-addons
 scikit-learn
 scikit-image
 h5py
