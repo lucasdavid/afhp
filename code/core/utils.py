@@ -71,3 +71,11 @@ def unfreeze_top_layers(
                     not freeze_bn))
   
   print(f'Unfreezing {layers:.0%} layers. Bottom-most is the {frozen_layer_ix}-nth layer ({model.layers[frozen_layer_ix].name}).')
+
+
+def get_optimizer(name, learning_rate):
+  if name == 'adam': return tf.optimizers.Adam(learning_rate=learning_rate)
+  if name == 'sgd': return tf.optimizers.SGD(learning_rate=learning_rate)
+  if name == 'momentum': return tf.optimizers.SGD(learning_rate=learning_rate, momentum=0.9, nesterov=True)
+  
+  return tf.optimizers.get({'class_name': name, 'config': {'learning_rate': learning_rate}})

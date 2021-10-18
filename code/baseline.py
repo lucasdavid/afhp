@@ -38,6 +38,7 @@ data_dir = os.environ.get('DATA_DIR', os.path.join(base_dir, 'datasets', 'painte
 logs_dir = os.environ.get('LOGS_DIR', os.path.join(base_dir, 'logs', 'painter-by-numbers'))
 weights_dir = os.environ.get('WEIGHTS_DIR', os.path.join(base_dir, 'weights', 'painter-by-numbers'))
 
+
 class ExperimentConfig:
   base_dir = base_dir
 
@@ -52,8 +53,9 @@ class DataConfig:
 
   size                 = (299, 299)
   shape                = (*size, 3)
-  batch_size           = 64
-  patches              = 20
+  patches                = int(os.environ.get('PATCHES', '20'))
+  batch_size_per_replica = int(os.environ.get('BATCH', '128'))
+  batch_size           = 128 * dst.num_replicas_in_sync
   shuffle_buffer_size  = 48 * batch_size
   prefetch_buffer_size = tf.data.experimental.AUTOTUNE
   shuffle_seed         = 2142
@@ -88,18 +90,23 @@ class SupconConfig:
     }
 
   class training:
-    epochs = 2
+    perform = os.environ.get('PERFORM_T', 'true') == 'true'
+
+    epochs = int(os.environ.get('EPOCHS', '100'))
     temperature = 0.05
     
     train_steps = None
     valid_steps = None
-    initial_epoch = 0
+    initial_epoch = int(os.environ.get('INITIAL_EPOCH', '0'))
     
-    logs = os.path.join(logs_dir, 'i3-supcon-baseline')
-    weights = os.path.join(weights_dir, 'i3-supcon-baseline')
+    learning_rate = float(os.environ.get('LR', '0.001'))
 
-    # optimizer = tf.keras.optimizers.SGD(learning_rate=0.00001, momentum=0.9, nesterov=True)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+    optimizer_name = os.environ.get('OPT', 'momentum')
+    optimizer = get_optimizer(optimizer_name, learning_rate)
+
+    logs = os.path.join(logs_dir, f'i3-supcon-baseline-opt:{optimizer_name}-lr:{learning_rate}')
+    weights = os.path.join(weights_dir, f'i3-supcon-baseline-opt:{optimizer_name}-lr:{learning_rate}')
+    
     loss_weights = {'artist': 0.4, 'style': 0.3, 'genre': 0.3}
     loss = {
       'artist': SupervisedContrastiveLoss(temperature),
@@ -107,7 +114,7 @@ class SupconConfig:
       'genre': SupervisedContrastiveLoss(temperature),
     }
 
-    callbacks = [
+    callbacks = lambda: [
       tf.keras.callbacks.TerminateOnNaN(),
       tf.keras.callbacks.EarlyStopping(patience=40, verbose=1),
       tf.keras.callbacks.TensorBoard(logs, histogram_freq=1, write_graph=True),
@@ -116,21 +123,26 @@ class SupconConfig:
     ]
 
   class finetune:
-    epochs = 2
-    layers = 0.6  # 60%
-    freeze_bn = True
+    perform = os.environ.get('PERFORM_FT', 'true') == 'true'
+
+    epochs = int(os.environ.get('EPOCHS_FT', '200'))
+    layers = 0.4  # 40%
+    freeze_bn = False
 
     train_steps = None
     valid_steps = None
-    initial_epoch = 0
+    initial_epoch = int(os.environ.get('INITIAL_EPOCH_FT', '0'))
     
-    logs = os.path.join(logs_dir, 'i3-supcon-baseline-ft')
-    weights = os.path.join(weights_dir, 'i3-supcon-baseline-ft')
-    exported = os.path.join(weights_dir, 'i3-supcon-baseline-ex')
+    learning_rate = float(os.environ.get('LR_FT', '0.0001'))
     
-    optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001)
+    optimizer_name = os.environ.get('OPT_FT', 'momentum')
+    optimizer = get_optimizer(optimizer_name, learning_rate)
 
-    callbacks = [
+    logs = os.path.join(logs_dir, f'i3-supcon-baseline-opt:{optimizer_name}-lr:{learning_rate}-ft')
+    weights = os.path.join(weights_dir, f'i3-supcon-baseline-opt:{optimizer_name}-lr:{learning_rate}-ft')
+    exported = os.path.join(weights_dir, f'i3-supcon-baseline-opt:{optimizer_name}-lr:{learning_rate}-ex')
+
+    callbacks = lambda: [
       tf.keras.callbacks.TerminateOnNaN(),
       tf.keras.callbacks.EarlyStopping(patience=40, verbose=1),
       tf.keras.callbacks.TensorBoard(logs, histogram_freq=1, write_graph=True),
@@ -166,11 +178,9 @@ print(f'  training   dataset: {train}')
 print(f'  validation dataset: {train}')
 # print('  testing  cardinality: ', dataset.cardinality().numpy())
 print()
-
 # endregion
 
 # region Supervised Contrastive
-
 ### Network
 with dst.scope():
   print(f'Loading {SupconConfig.model.backbone.__name__}')
@@ -181,15 +191,15 @@ with dst.scope():
     input_tensor=SupconConfig.input_tensor
   )
   
-  backbone.training = False
+  backbone.trainable = False
 
   nn = supcon_encoder_multitask_network(
     input_tensor=SupconConfig.input_tensor,
     backbone=backbone,
     pooling=SupconConfig.model.pooling,
-    artist_projection_head=ProjectionHead(name='artist_project_head', pr_ks=SupconConfig.model.pr_ks),
-    style_projection_head=ProjectionHead(name='style_project_head', pr_ks=SupconConfig.model.pr_ks),
-    genre_projection_head=ProjectionHead(name='genre_project_head', pr_ks=SupconConfig.model.pr_ks),
+    artist_projection_head=ProjectionHead(name='artist_sadh', pr_ks=SupconConfig.model.pr_ks),
+    style_projection_head=ProjectionHead(name='style_sadh', pr_ks=SupconConfig.model.pr_ks),
+    genre_projection_head=ProjectionHead(name='genre_sadh', pr_ks=SupconConfig.model.pr_ks),
     name='painter-by-numbers/supcon'
   )
 
@@ -199,58 +209,69 @@ with dst.scope():
     loss_weights=SupconConfig.training.loss_weights
   )
 
+  print('[SADN head fit] Network Summary')
+  nn.summary()
+
 ### Training
 # nn(tf.random.normal((DataConfig.batch_size, 299, 299, 3)), training=False);  # sanity check.
-
-report = train_fn(
-  nn,
-  train,
-  valid,
-  epochs=SupconConfig.training.epochs,
-  logs=SupconConfig.training.logs,
-  weights=SupconConfig.training.weights,
-  train_steps=SupconConfig.training.train_steps,
-  valid_steps=SupconConfig.training.valid_steps,
-  initial_epoch=SupconConfig.training.initial_epoch,
-  callbacks=SupconConfig.training.callbacks,
-  override=SupconConfig.override,
-  distributed_strategy=dst,
-)
+if SupconConfig.training.perform:
+  report = train_fn(
+    nn,
+    train,
+    valid,
+    epochs=SupconConfig.training.epochs,
+    logs=SupconConfig.training.logs,
+    weights=SupconConfig.training.weights,
+    train_steps=SupconConfig.training.train_steps,
+    valid_steps=SupconConfig.training.valid_steps,
+    initial_epoch=SupconConfig.training.initial_epoch,
+    callbacks=SupconConfig.training.callbacks(),
+    override=SupconConfig.override,
+    distributed_strategy=dst,
+  )
 
 
 ### Fine-Tuning
+if SupconConfig.finetune.perform:
+  print('[SADN finetuning] Network Summary')
+  nn.summary()
 
-initial_epoch = SupconConfig.finetune.initial_epoch or len(report['epochs'])
+  if SupconConfig.training.perform:
+    initial_epoch = len(report.history['loss'])
+  else:
+    initial_epoch = SupconConfig.finetune.initial_epoch
 
-with dst.scope():
-  unfreeze_top_layers(
-  nn,
-  SupconConfig.finetune.layers,
-  SupconConfig.finetune.freeze_bn,
+  with dst.scope():
+    nn.load_weights(SupconConfig.training.weights)
+
+    unfreeze_top_layers(
+      nn,
+      SupconConfig.finetune.layers,
+      SupconConfig.finetune.freeze_bn,
+    )
+
+    nn.compile(
+      optimizer=SupconConfig.finetune.optimizer,
+      loss=SupconConfig.training.loss,
+      loss_weights=SupconConfig.training.loss_weights
+    )
+
+  train_fn(
+    nn,
+    train,
+    valid,
+    epochs=SupconConfig.finetune.epochs,
+    logs=SupconConfig.finetune.logs,
+    weights=SupconConfig.finetune.weights,
+    train_steps=SupconConfig.finetune.train_steps,
+    valid_steps=SupconConfig.finetune.valid_steps,
+    initial_epoch=initial_epoch,
+    callbacks=SupconConfig.finetune.callbacks(),
+    override=SupconConfig.override,
+    distributed_strategy=dst,
   )
 
-  nn.compile(
-    optimizer=SupconConfig.finetune.optimizer,
-    loss=SupconConfig.training.loss,
-    loss_weights=SupconConfig.training.loss_weights
-  )
-
-train_fn(
-  nn,
-  train,
-  valid,
-  epochs=SupconConfig.finetune.epochs,
-  logs=SupconConfig.finetune.logs,
-  weights=SupconConfig.finetune.weights,
-  train_steps=SupconConfig.finetune.train_steps,
-  valid_steps=SupconConfig.finetune.valid_steps,
-  initial_epoch=initial_epoch,
-  callbacks=SupconConfig.finetune.callbacks,
-  override=SupconConfig.override,
-  distributed_strategy=dst,
-)
+  print(f'Exporting model to {SupconConfig.finetune.exported}')
+  nn.save(SupconConfig.finetune.exported, save_format='tf')
 
 # endregion
-
-print(f'Exporting model to {SupconConfig.finetune.exported}')
-nn.save(SupconConfig.finetune.exported, save_format='tf')
