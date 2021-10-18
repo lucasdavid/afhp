@@ -81,7 +81,7 @@ class DataConfig:
   np.random.seed(ExperimentConfig.np_seed)
 
 class SupconConfig:
-  override = True
+  override = os.environ.get('OVERRIDE', 'true') == 'true'
   input_tensor = tf.keras.Input(shape=DataConfig.shape, name='image')
   
   class model:
@@ -160,7 +160,7 @@ print('\n[Painter by Numbers] loading')
 info = pbn.PainterByNumbers.load_info(DataConfig.all_info, DataConfig.train_info)
 
 dataset = tf.data.TFRecordDataset(DataConfig.train_records)
-# dataset = dataset.apply(tf.data.experimental.assert_cardinality(pbn.PainterByNumbers.num_train_samples))
+dataset = dataset.apply(tf.data.experimental.assert_cardinality(pbn.PainterByNumbers.num_train_samples))
 
 shards_t = int((1 - DataConfig.valid_size) * DataConfig.shards)
 shards_v = DataConfig.shards - shards_t
