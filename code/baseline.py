@@ -10,6 +10,8 @@ Strategy Description:
 # region Setup
 
 import os
+
+from pandas.core.indexing import convert_from_missing_indexer_tuple
 import tensorflow as tf
 
 from core.boot import *
@@ -34,9 +36,9 @@ from core.datasets import pbn
 
 base_dir = os.environ.get('SCRATCH', '/scratch/lerdl/lucas.david')
 
-data_dir = os.environ.get('DATA_DIR', os.path.join(base_dir, 'datasets', 'painter-by-numbers'))
-logs_dir = os.environ.get('LOGS_DIR', os.path.join(base_dir, 'logs', 'painter-by-numbers'))
-weights_dir = os.environ.get('WEIGHTS_DIR', os.path.join(base_dir, 'weights', 'painter-by-numbers'))
+data_dir = os.environ.get('DATA_DIR', os.path.join(base_dir, 'painting-by-numbers', 'datasets'))
+logs_dir = os.environ.get('LOGS_DIR', os.path.join(base_dir, 'painting-by-numbers', 'logs'))
+weights_dir = os.environ.get('WEIGHTS_DIR', os.path.join(base_dir, 'painting-by-numbers', 'models'))
 
 
 class ExperimentConfig:
@@ -56,7 +58,7 @@ class DataConfig:
   patches                = int(os.environ.get('PATCHES', '20'))
   batch_size_per_replica = int(os.environ.get('BATCH', '128'))
   batch_size           = 128 * dst.num_replicas_in_sync
-  shuffle_buffer_size  = 48 * batch_size
+  shuffle_buffer_size  = 128 * batch_size
   prefetch_buffer_size = tf.data.experimental.AUTOTUNE
   shuffle_seed         = 2142
 
@@ -95,8 +97,8 @@ class SupconConfig:
     epochs = int(os.environ.get('EPOCHS', '100'))
     temperature = 0.05
     
-    train_steps = None
-    valid_steps = None
+    train_steps = int(os.environ.get('TRAIN_STEPS', '0'))
+    valid_steps = int(os.environ.get('VALID_STEPS', '0'))
     initial_epoch = int(os.environ.get('INITIAL_EPOCH', '0'))
     
     learning_rate = float(os.environ.get('LR', '0.001'))
@@ -104,8 +106,8 @@ class SupconConfig:
     optimizer_name = os.environ.get('OPT', 'momentum')
     optimizer = get_optimizer(optimizer_name, learning_rate)
 
-    logs = os.path.join(logs_dir, f'i3-supcon-baseline-opt:{optimizer_name}-lr:{learning_rate}')
-    weights = os.path.join(weights_dir, f'i3-supcon-baseline-opt:{optimizer_name}-lr:{learning_rate}')
+    logs = os.path.join(logs_dir, f'baseline-i3-supcon-opt:{optimizer_name}-lr:{learning_rate}-batch:{DataConfig.batch_size}')
+    weights = os.path.join(weights_dir, f'baseline-i3-supcon-opt:{optimizer_name}-lr:{learning_rate}-batch:{DataConfig.batch_size}')
     
     loss_weights = {'artist': 0.4, 'style': 0.3, 'genre': 0.3}
     loss = {
@@ -117,9 +119,9 @@ class SupconConfig:
     callbacks = lambda: [
       tf.keras.callbacks.TerminateOnNaN(),
       tf.keras.callbacks.EarlyStopping(patience=40, verbose=1),
-      tf.keras.callbacks.TensorBoard(logs, histogram_freq=1, write_graph=True),
-      tf.keras.callbacks.ModelCheckpoint(weights, save_weights_only=True, save_best_only=True, verbose=1),
-      ReduceLRBacktrack(min_lr=1e-6, best_path=weights, distributed_strategy=dst),
+      tf.keras.callbacks.TensorBoard(SupconConfig.training.logs, histogram_freq=1, write_graph=True),
+      tf.keras.callbacks.ModelCheckpoint(SupconConfig.training.weights, save_weights_only=True, save_best_only=True, verbose=1),
+      ReduceLRBacktrack(min_lr=1e-6, best_path=SupconConfig.training.weights, distributed_strategy=dst),
     ]
 
   class finetune:
@@ -129,8 +131,8 @@ class SupconConfig:
     layers = 0.4  # 40%
     freeze_bn = False
 
-    train_steps = None
-    valid_steps = None
+    train_steps = int(os.environ.get('TRAIN_STEPS_FT', '0'))
+    valid_steps = int(os.environ.get('VALID_STEPS_FT', '0'))
     initial_epoch = int(os.environ.get('INITIAL_EPOCH_FT', '0'))
     
     learning_rate = float(os.environ.get('LR_FT', '0.0001'))
@@ -138,44 +140,53 @@ class SupconConfig:
     optimizer_name = os.environ.get('OPT_FT', 'momentum')
     optimizer = get_optimizer(optimizer_name, learning_rate)
 
-    logs = os.path.join(logs_dir, f'i3-supcon-baseline-opt:{optimizer_name}-lr:{learning_rate}-ft')
-    weights = os.path.join(weights_dir, f'i3-supcon-baseline-opt:{optimizer_name}-lr:{learning_rate}-ft')
-    exported = os.path.join(weights_dir, f'i3-supcon-baseline-opt:{optimizer_name}-lr:{learning_rate}-ex')
+    logs = os.path.join(logs_dir, f'baseline-i3-supcon-opt:{optimizer_name}-lr:{learning_rate}-batch:{DataConfig.batch_size}-ft')
+    weights = os.path.join(weights_dir, f'baseline-i3-supcon-opt:{optimizer_name}-lr:{learning_rate}-batch:{DataConfig.batch_size}-ft')
+    exported = os.path.join(weights_dir, f'baseline-i3-supcon-opt:{optimizer_name}-lr:{learning_rate}-batch:{DataConfig.batch_size}-ex')
 
     callbacks = lambda: [
       tf.keras.callbacks.TerminateOnNaN(),
       tf.keras.callbacks.EarlyStopping(patience=40, verbose=1),
-      tf.keras.callbacks.TensorBoard(logs, histogram_freq=1, write_graph=True),
-      tf.keras.callbacks.ModelCheckpoint(weights, save_weights_only=True, save_best_only=True, verbose=1),
-      ReduceLRBacktrack(min_lr=1e-6, best_path=weights, distributed_strategy=dst),
+      tf.keras.callbacks.TensorBoard(SupconConfig.finetune.logs, histogram_freq=1, write_graph=True),
+      tf.keras.callbacks.ModelCheckpoint(SupconConfig.finetune.weights, save_weights_only=True, save_best_only=True, verbose=1),
+      ReduceLRBacktrack(min_lr=1e-6, best_path=SupconConfig.finetune.weights, distributed_strategy=dst),
     ]
 
 # endregion
 
 # region Painter by Numbers Dataset
+print('\n[Painter by Numbers] loading')
+
 info = pbn.PainterByNumbers.load_info(DataConfig.all_info, DataConfig.train_info)
 
 dataset = tf.data.TFRecordDataset(DataConfig.train_records)
-dataset = dataset.apply(tf.data.experimental.assert_cardinality(pbn.PainterByNumbers.num_train_samples))
+# dataset = dataset.apply(tf.data.experimental.assert_cardinality(pbn.PainterByNumbers.num_train_samples))
 
 shards_t = int((1 - DataConfig.valid_size) * DataConfig.shards)
 shards_v = DataConfig.shards - shards_t
 
-train = pbn.prepare(dataset, shards_t, augment=True, shuffle_seed=DataConfig.shuffle_seed, config=DataConfig)
-valid = pbn.prepare(dataset, shards_v, shards_t, shuffle_seed=DataConfig.shuffle_seed + 429)
+train_steps = shards_t * (pbn.PainterByNumbers.num_train_samples // DataConfig.shards) // DataConfig.batch_size
+valid_steps = shards_v * (pbn.PainterByNumbers.num_train_samples // DataConfig.shards) // DataConfig.batch_size
 
-print('\nPainter by Numbers Stats')
+train = pbn.prepare(dataset, shards_t, shard_0=0, augment=True, shuffle_seed=DataConfig.shuffle_seed, config=DataConfig)
+valid = pbn.prepare(dataset, shards_v, shards_t, augment=False, shuffle_seed=DataConfig.shuffle_seed + 429)
+train = dst.experimental_distribute_dataset(train.repeat())
+valid = dst.experimental_distribute_dataset(valid.repeat())
+
+print('[Painter by Numbers] Stats')
 print(f'  training samples: {pbn.PainterByNumbers.num_train_samples:10d}')
 print(f'  testing  samples: {pbn.PainterByNumbers.num_train_samples:10d}')
 print('  total shards:', DataConfig.shards)
-print('  training shards:', shards_t)
-print('  validation shards:', shards_v)
+print('  train shards:', shards_t)
+print('  valid shards:', shards_v)
+print('  steps in train shards:', train_steps)
+print('  steps in valid shards:', valid_steps)
 
-print('  training cardinality: ', dataset.cardinality().numpy())
-print('  sub-training cardinality: ', train.cardinality().numpy())
-print('  validation   cardinality: ', valid.cardinality().numpy())
-print(f'  training   dataset: {train}')
-print(f'  validation dataset: {train}')
+# print('  training cardinality: ', dataset.cardinality().numpy())
+# print('  sub-training cardinality: ', train.cardinality().numpy())
+# print('  validation   cardinality: ', valid.cardinality().numpy())
+# print(f'  training   dataset: {train}')
+# print(f'  validation dataset: {train}')
 # print('  testing  cardinality: ', dataset.cardinality().numpy())
 print()
 # endregion
@@ -183,7 +194,7 @@ print()
 # region Supervised Contrastive
 ### Network
 with dst.scope():
-  print(f'Loading {SupconConfig.model.backbone.__name__}')
+  print(f'[SADN head fit] Loading {SupconConfig.model.backbone.__name__}')
 
   backbone = SupconConfig.model.backbone(
     classifier_activation=None,
@@ -213,8 +224,8 @@ with dst.scope():
   nn.summary()
 
 ### Training
-# nn(tf.random.normal((DataConfig.batch_size, 299, 299, 3)), training=False);  # sanity check.
 if SupconConfig.training.perform:
+  print('[SADN head fit] Training')
   report = train_fn(
     nn,
     train,
@@ -222,8 +233,8 @@ if SupconConfig.training.perform:
     epochs=SupconConfig.training.epochs,
     logs=SupconConfig.training.logs,
     weights=SupconConfig.training.weights,
-    train_steps=SupconConfig.training.train_steps,
-    valid_steps=SupconConfig.training.valid_steps,
+    train_steps=SupconConfig.training.train_steps or train_steps,
+    valid_steps=SupconConfig.training.valid_steps or valid_steps,
     initial_epoch=SupconConfig.training.initial_epoch,
     callbacks=SupconConfig.training.callbacks(),
     override=SupconConfig.override,
@@ -242,6 +253,9 @@ if SupconConfig.finetune.perform:
     initial_epoch = SupconConfig.finetune.initial_epoch
 
   with dst.scope():
+    if not os.path.exists(SupconConfig.training.weights):
+      print('[SADN finetuning:warning] Finetuning without a pre-training head.')
+
     nn.load_weights(SupconConfig.training.weights)
 
     unfreeze_top_layers(
@@ -263,8 +277,8 @@ if SupconConfig.finetune.perform:
     epochs=SupconConfig.finetune.epochs,
     logs=SupconConfig.finetune.logs,
     weights=SupconConfig.finetune.weights,
-    train_steps=SupconConfig.finetune.train_steps,
-    valid_steps=SupconConfig.finetune.valid_steps,
+    train_steps=SupconConfig.finetune.train_steps or train_steps,
+    valid_steps=SupconConfig.finetune.valid_steps or valid_steps,
     initial_epoch=initial_epoch,
     callbacks=SupconConfig.finetune.callbacks(),
     override=SupconConfig.override,

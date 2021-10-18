@@ -1,15 +1,13 @@
 from math import ceil
+from datetime import datetime
 
 import tensorflow as tf
 
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from tensorflow.python.keras.callbacks import ReduceLROnPlateau
-from tensorflow.python.platform import tf_logging
-
-
 sns.set_style("whitegrid", {'axes.grid' : False})
+
 
 def normalize(x, reduce_min=True, reduce_max=True):
   if reduce_min: x -= tf.reduce_min(x, axis=(-3, -2), keepdims=True)
@@ -79,3 +77,15 @@ def get_optimizer(name, learning_rate):
   if name == 'momentum': return tf.optimizers.SGD(learning_rate=learning_rate, momentum=0.9, nesterov=True)
   
   return tf.optimizers.get({'class_name': name, 'config': {'learning_rate': learning_rate}})
+
+
+
+def log_func_start(fun_name, **kwargs):
+  print(f'  [{fun_name} started at {datetime.now()}]')
+
+  max_param_size = max(map(len, kwargs.keys()))
+
+  for k, v in kwargs.items():
+    print(f'    {k:<{max_param_size}} = {v}')
+  
+  print()
