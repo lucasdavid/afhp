@@ -129,5 +129,9 @@ dmypy.json
 .pyre/
 
 logs/
+checkpoints
 data
-notebooks/core/
+data**
+notebooks**
+experiments
+experiments**

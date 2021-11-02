@@ -1,6 +1,14 @@
 {
+  "search.exclude": {
+    "**/data/**": true,
+    "**/data": true,
+    "**/experiments/**": true,
+    "**/experiments": true
+  },
   "files.watcherExclude": {
     "**/data/**": true,
-    "**/logs/**": true
+    "**/data": true,
+    "**/experiments/**": true,
+    "**/experiments": true
   }
 }

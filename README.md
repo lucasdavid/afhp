@@ -1,41 +1,20 @@
-# Painting by Numbers
+# Adversarial Feature Hallucination in a Supervised Contrastive Space for Few-Shot Learning of Provenance in Paintings
 
-Adversarial Generation of Fine-Art Paintings.
+Official implementation of the paper "Adversarial Feature Hallucination in a Supervised Contrastive Space for Few-Shot Learning of Provenance in Paintings", presented in LA-CCI 2023.
 
+![Proposal Overview](assets/afhn_overview.png)
+    
+## Summary
+
+Adversarial Feature Hallucination Networks for Few-Shot Learning ([AFHN](https://arxiv.org/abs/2003.13193))
+over a [Supervised Contrastive](https://proceedings.neurips.cc/paper_files/paper/2020/file/d89a66c7c80a29b1bdbab0f2a1a94af8-Paper.pdf) space,
+applied to Few-Shot tasks sampled from the [Painter by Numbers](https://www.kaggle.com/c/painter-by-numbers) dataset.
 
 ## Building and Running
 
 Add the data to the `./data` folder (or create a symbolic link with `ln -s /path/to/dataset data`).
 
-The project can be build and run a notebook server instance with the following commands:
+You can run the project with:
 ```shell
-$ docker build -t ldavid/painting-by-numbers .
-$
-$ docker run -it --rm -p 8888:8888 \
-    -v $(pwd)/code:/tf/code \
-    -v $(pwd)/data/cached/.keras:/root/.keras \
-    -v $(pwd)/notebooks:/tf/notebooks \
-    -v $(pwd)/data:/tf/data \
-    -v $(pwd)/logs:/tf/logs \
-    -v $(pwd)/config:/tf/config \
-    ldavid/painting-by-numbers
+$ ./runners/1-train.sh
 ```
-
-To run experiments, simply use the `-d` option in `docker run -itd ...` and
-call the scripts `docker exec -it {INSTANCE_ID} python {PATH_TO_SCRIPT}`.
-
-For example:
-```shell
-$ docker run -itd --rm -p 8888:8888 -v $(pwd)/code:/tf/code -v $(pwd)/notebooks:/tf/notebooks -v $(pwd)/data:/tf/data -v $(pwd)/data/cached/.keras:/root/.keras -v $(pwd)/logs:/tf/logs -v $(pwd)/config:/tf/config ldavid/painting-by-numbers
-6290cd3658b4779df48f5586f0e8587a63838319e638d6ad88587654b537a0bd
-
-$ docker exec -it 6290 python /tf/code/adversarial_feature_hallucination_cifar100.py with /tf/config/docker/cifar100/adv_feature_hallucination_fsl.baseline.yml -F /tf/logs/cifar100/afh_baseline
-```
-
-
-## Implemented
-
- #  | Dataset            | Strategy                                   | Description                    | Ref.
---- | ------------------ | ------------------------------------------ | ------------------------------ | --------------------------------------------------
-1   | Cifar100           | Adversarial Feature Hallucination FSL      |                                | [2003.13193](https://arxiv.org/pdf/2003.13193.pdf)
-2   | Painter by Numbers | Supervised Contrastive Learning (baseline) | Multi-task between artist, style and genre classification, producing a better embedding space | [2004.11362](https://arxiv.org/abs/2004.11362)

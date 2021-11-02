@@ -79,7 +79,7 @@ class DataConfig:
 class SupconConfig:
   override = os.environ.get('OVERRIDE', 'false') == 'true'
   input_tensor = tf.keras.Input(shape=DataConfig.shape, name='image')
-  
+
   class model:
     backbone = tf.keras.applications.InceptionV3
     pooling = 'avg'
@@ -92,19 +92,19 @@ class SupconConfig:
 
     epochs = int(os.environ.get('EPOCHS', '100'))
     temperature = 0.05
-    
+
     train_steps = int(os.environ.get('TRAIN_STEPS', '0'))
     valid_steps = int(os.environ.get('VALID_STEPS', '0'))
     initial_epoch = int(os.environ.get('INITIAL_EPOCH', '0'))
-    
+
     learning_rate = float(os.environ.get('LR', '0.001'))
 
     optimizer_name = os.environ.get('OPT', 'momentum')
     optimizer = get_optimizer(optimizer_name, learning_rate)
 
     logs = os.path.join(logs_dir, f'baseline-i3-supcon-opt:{optimizer_name}-lr:{learning_rate}-batch:{DataConfig.batch_size}')
-    weights = os.path.join(weights_dir, f'baseline-i3-supcon-opt:{optimizer_name}-lr:{learning_rate}-batch:{DataConfig.batch_size}')
-    
+    weights = os.path.join(weights_dir, f'baseline-i3-supcon-opt:{optimizer_name}-lr:{learning_rate}-batch:{DataConfig.batch_size}/checkpoint')
+
     loss_weights = {'artist': 0.4, 'style': 0.3, 'genre': 0.3}
     loss = {
       'artist': SupervisedContrastiveLoss(temperature),
@@ -130,14 +130,14 @@ class SupconConfig:
     train_steps = int(os.environ.get('TRAIN_STEPS_FT', '0'))
     valid_steps = int(os.environ.get('VALID_STEPS_FT', '0'))
     initial_epoch = int(os.environ.get('INITIAL_EPOCH_FT', '0'))
-    
+
     learning_rate = float(os.environ.get('LR_FT', '0.0001'))
-    
+
     optimizer_name = os.environ.get('OPT_FT', 'momentum')
     optimizer = get_optimizer(optimizer_name, learning_rate)
 
     logs = os.path.join(logs_dir, f'baseline-i3-supcon-opt:{optimizer_name}-lr:{learning_rate}-batch:{DataConfig.batch_size}-ft')
-    weights = os.path.join(weights_dir, f'baseline-i3-supcon-opt:{optimizer_name}-lr:{learning_rate}-batch:{DataConfig.batch_size}-ft')
+    weights = os.path.join(weights_dir, f'baseline-i3-supcon-opt:{optimizer_name}-lr:{learning_rate}-batch:{DataConfig.batch_size}-ft/checkpoint')
     exported = os.path.join(weights_dir, f'baseline-i3-supcon-opt:{optimizer_name}-lr:{learning_rate}-batch:{DataConfig.batch_size}-ex')
 
     callbacks = lambda: [
@@ -195,16 +195,16 @@ with dst.scope():
     include_top=False,
     input_tensor=SupconConfig.input_tensor
   )
-  
+
   backbone.trainable = False
 
   nn = supcon_encoder_multitask_network(
     input_tensor=SupconConfig.input_tensor,
     backbone=backbone,
     pooling=SupconConfig.model.pooling,
-    artist_projection_head=ProjectionHead(name='artist_sadh', pr_ks=SupconConfig.model.pr_ks),
-    style_projection_head=ProjectionHead(name='style_sadh', pr_ks=SupconConfig.model.pr_ks),
-    genre_projection_head=ProjectionHead(name='genre_sadh', pr_ks=SupconConfig.model.pr_ks),
+    artist_projection_head=SupConProjectionHead(name='artist_sadh', pr_ks=SupconConfig.model.pr_ks),
+    style_projection_head=SupConProjectionHead(name='style_sadh', pr_ks=SupconConfig.model.pr_ks),
+    genre_projection_head=SupConProjectionHead(name='genre_sadh', pr_ks=SupconConfig.model.pr_ks),
     name='painter-by-numbers/supcon'
   )
 

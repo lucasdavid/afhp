@@ -155,8 +155,8 @@ def prepare(
   if ignore_errors:
     data = data.apply(tf.data.experimental.ignore_errors(log_warning=True))
 
-  return (data.batch(PbN.config.batch_size, drop_remainder=True)
-              .map(augment_policy_fn if augment else default_policy_fn, num_parallel_calls=tf.data.AUTOTUNE)
+  return (data.map(augment_policy_fn if augment else default_policy_fn, num_parallel_calls=tf.data.AUTOTUNE)
+              .batch(PbN.config.batch_size, drop_remainder=True)
               .prefetch(tf.data.AUTOTUNE)
               .repeat())
 
@@ -167,12 +167,7 @@ def default_policy_fn(images, labels):
   return PbN.config.preprocess(images), labels
 
 def augment_policy_fn(image, labels):
-  batch_size = tf.shape(image)[:1]
-
   seeds = PbN.config.R.make_seeds(7)
-
-  angles = tf.random.stateless_uniform(batch_size, maxval=2*np.pi, seed=seeds[:, 6])
-  image = tfa.image.rotate(image, angles=angles, fill_mode='reflect')
 
   image = tf.image.stateless_random_flip_left_right(image, seed=seeds[:, 0])
   image = tf.image.stateless_random_flip_up_down(image, seed=seeds[:, 1])
@@ -180,5 +175,8 @@ def augment_policy_fn(image, labels):
   image = tf.image.stateless_random_brightness(image, PbN.config.aug.brightness_delta, seed=seeds[:, 3])
   image = tf.image.stateless_random_contrast(image, PbN.config.aug.contrast_lower, PbN.config.aug.contrast_upper, seed=seeds[:, 4])
   image = tf.image.stateless_random_saturation(image, PbN.config.aug.saturation_lower, PbN.config.aug.saturation_upper, seed=seeds[:, 5])
+
+  angles = tf.random.stateless_uniform((), maxval=2*np.pi, seed=seeds[:, 6])
+  image = tfa.image.rotate(image, angles=angles, fill_mode='reflect')
 
   return PbN.config.preprocess(image), labels
