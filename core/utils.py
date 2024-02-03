@@ -20,15 +20,15 @@ def str2bool(v):
 
 
 def get_extractor_params(args):
-  TAG = args.backbone_model
+  TAG = args.strategy
   SEED = args.backbone_valid_seed
   B_TRAIN = args.batch_size
   S = args.patch_size
   P = args.patches_train
   W = args.backbone_train_workers
   BACKBONE = args.backbone_architecture
-  EPOCHS_HE = args.backbone_train_epochs_head
-  EPOCHS_FT = args.backbone_train_epochs_finetune
+  EPOCHS_HE = args.backbone_train_epochs
+  EPOCHS_FT = args.backbone_finetune_epochs
   TARGET = "painter"
   if EPOCHS_HE + EPOCHS_FT == 0:
     NAME = f"pbn_{args.data_split}_{args.patch_size}_{BACKBONE}_{TAG}_pretrained"
@@ -41,10 +41,10 @@ def get_extractor_params(args):
 
 
 def get_afhp_params(args):
-  TAG = args.backbone_model
+  TAG = args.strategy
   BACKBONE = args.backbone_architecture
-  EPOCHS_HE = args.backbone_train_epochs_head
-  EPOCHS_FT = args.backbone_train_epochs_finetune
+  EPOCHS_HE = args.backbone_train_epochs
+  EPOCHS_FT = args.backbone_finetune_epochs
 
   PROBLEM = args.afhp_problem
   EPOCHS = args.afhp_epochs
@@ -70,10 +70,8 @@ def visualize(
     figsize=(16, 7.2),
     cmap=None
 ):
-  # import seaborn as sns
   import matplotlib.pyplot as plt
 
-  # sns.set_style("whitegrid", {'axes.grid' : False})
   if image is not None:
     if isinstance(image, (list, tuple)) or len(image.shape) > 3:  # many images
       plt.figure(figsize=figsize)

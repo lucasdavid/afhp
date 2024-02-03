@@ -6,7 +6,13 @@ import tensorflow as tf
 from sklearn.preprocessing import LabelEncoder
 
 
-def groupby_class(names, features, info, class_col="painter", verbose: int = 1):
+def groupby_class(
+    names: np.ndarray,
+    features: np.ndarray,
+    info: "pd.DataFrame",
+    class_col: str = "painter",
+    verbose: int = 1,
+):
   fname2class = dict(info.set_index("filename")[class_col])
   encoder = LabelEncoder()
   classes = np.asarray([fname2class[n] for n in names])
@@ -162,3 +168,73 @@ class PbNFeaturesSequence(tf.keras.utils.Sequence):
       targets = np.repeat(self.target_indices["group_0"][low:high].astype("int64"), self.patches)
 
     return batch_images, targets
+
+
+#region Visualizing Hallucinated Features
+
+def plot_embeddings(G, train_ds, test_ds, save_path, noise_features, extra_k=50):
+  import seaborn as sns
+  import matplotlib.pyplot as plt
+  sns.set(style="whitegrid")
+
+  fig = plt.figure(figsize=(16, 9))
+  plt.subplot(121)
+  x, y, is_real = _gen_fake_features(G, train_ds, noise_features, extra_k=extra_k)
+  _vis_fake_features(x, y, is_real)
+  plt.xlabel('Training')
+
+  plt.subplot(122)
+  x, y, is_real = _gen_fake_features(G, test_ds, noise_features, extra_k=extra_k)
+  _vis_fake_features(x, y, is_real)
+  plt.xlabel('Testing')
+
+  plt.tight_layout()
+  fig.savefig(save_path)
+  fig.clf()
+  del fig
+
+
+def _gen_fake_features(G, dataset, noise_features, extra_k=50):
+  samples = []
+
+  (x_real, y_real, x_query, y_query), = list(dataset.take(1))
+
+  # Hallucinate GC new samples using the generator.
+  context = tf.reduce_mean(x_real, axis=1) # [5,10,2048] -> [5,2048]
+  context = tf.repeat(context, extra_k, axis=0)
+
+  z1 = tf.random.normal((context.shape[0], noise_features))
+  x1_fake = G.predict_on_batch([z1, context])
+  x1_fake = tf.convert_to_tensor(x1_fake)
+
+  y_fake = tf.repeat(y_real, extra_k, axis=0)
+
+  B, K, F = x_real.shape
+
+  x_real = tf.reshape(x_real, (-1, F))
+  y_real = tf.repeat(y_real, K, axis=0)
+
+  samples.append((x_real, y_real, tf.ones_like(y_real)))
+  samples.append(((x1_fake, y_fake, tf.zeros_like(y_fake))))
+
+  x, y, is_real = (tf.concat(e, axis=0).numpy() for e in zip(*samples))
+
+  return x, y, is_real.astype(bool)
+
+
+def _vis_fake_features(x, y, is_real):
+  import seaborn as sns
+  import matplotlib.pyplot as plt
+  from sklearn.manifold import TSNE
+
+  with warnings.catch_warnings():
+    warnings.simplefilter(action='ignore', category=FutureWarning)
+
+    z = TSNE(init='pca', learning_rate='auto').fit_transform(x)
+    y = np.char.add("class ", y.astype("str"))
+
+    sns.scatterplot(x=z[is_real, 0], y=z[is_real, 1], hue=y[is_real], marker='s', label='Original', alpha=0.8, legend=False)
+    sns.scatterplot(x=z[~is_real, 0], y=z[~is_real, 1], hue=y[~is_real], label='Generated', alpha=0.8, legend='brief')
+    plt.legend()
+
+# endregion

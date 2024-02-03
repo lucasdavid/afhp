@@ -689,7 +689,9 @@ def load_features_file(features_dir: str, extractor_name: str, patches: int = No
     if patches:
       b_feats = b_feats[:, :patches]
 
-    print(f"  part {part} loaded: names=({len(b_fnames)}) features=(shape={b_feats.shape}, dtype={b_feats.dtype})", flush=True)
+    print(f"  part {part} loaded: names=({len(b_fnames)}) "
+          f"features=(shape={b_feats.shape}, dtype={b_feats.dtype})",
+          flush=True)
 
     fnames.append(b_fnames)
     features.append(b_feats)
@@ -698,6 +700,6 @@ def load_features_file(features_dir: str, extractor_name: str, patches: int = No
     print(f"fnames={len(fnames)} unames={len(unames)} "
           f"ucounts-min={ucounts.min()} ucounts-max={ucounts.max()}", flush=True)
 
-  fnames, features = map(np.concatenate, (fnames, features))
+  fnames, features = (np.concatenate(e, axis=0) for e in (fnames, features))
 
   return fnames, features

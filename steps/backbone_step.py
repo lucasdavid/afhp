@@ -2,7 +2,6 @@ from math import ceil
 import os
 
 import numpy as np
-import pandas as pd
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from core.utils import unfreeze_top_layers, get_extractor_params
@@ -110,7 +109,7 @@ def supcon(
   SEED, B_TRAIN, S, P, W, BACKBONE, EPOCHS_HE, EPOCHS_FT, TARGET, NAME, WEIGHTS, WEIGHTS_EXIST = get_extractor_params(args)
 
   if EPOCHS_HE > 0:
-    print(f"SupCon requires training from all layers. Setting backbone_train_epochs_head = 0 (previous = {EPOCHS_HE}).")
+    print(f"SupCon requires training from all layers. Setting backbone_train_epochs = 0 (previous = {EPOCHS_HE}).")
     EPOCHS_HE = 0
 
   train_info, valid_info = train_test_split(info, test_size=args.backbone_valid_split, stratify=info[TARGET], random_state=SEED)
@@ -176,7 +175,7 @@ def supcon_mh(
   SEED, B_TRAIN, S, P, W, BACKBONE, EPOCHS_HE, EPOCHS_FT, TARGET, NAME, WEIGHTS, WEIGHTS_EXIST = get_extractor_params(args)
 
   if EPOCHS_HE > 0:
-    print(f"SupCon-MultiHead requires training from all layers. Setting backbone_train_epochs_head = 0 (previous = {EPOCHS_HE}).")
+    print(f"SupCon-MultiHead requires training from all layers. Setting backbone_train_epochs = 0 (previous = {EPOCHS_HE}).")
     EPOCHS_HE = 0
 
   train_info, valid_info = train_test_split(info, test_size=args.backbone_valid_split, stratify=info[TARGET], random_state=SEED)
@@ -241,8 +240,8 @@ def inference(model, info, distributed_strategy, args, NAME, WEIGHTS, TARGET, wo
   print("=" * 65)
   print("Inference")
 
-  B = args.batch_size_infer
-  P = args.patches_infer
+  B = args.batch_test
+  P = args.patches_test
   S = args.patch_size
   SPLITS = int(ceil(len(info) / parts))
 
@@ -256,7 +255,7 @@ def inference(model, info, distributed_strategy, args, NAME, WEIGHTS, TARGET, wo
     else:
       if "pretrained" in NAME:
         print(f"Weights not found at {WEIGHTS}. Ignoring because this model has 'pretrained' in its name. "
-              "You can train it by increasing backbone_train_epochs_head and/or backbone_train_epochs_finetune.")
+              "You can train it by increasing backbone_train_epochs and/or backbone_finetune_epochs.")
       else:
         raise FileNotFoundError(WEIGHTS)
 
@@ -284,7 +283,7 @@ def inference(model, info, distributed_strategy, args, NAME, WEIGHTS, TARGET, wo
         print(".", end="", flush=True)
 
     features = np.concatenate(features, axis=0)  # [K, B*P, F]
-    features = features.reshape(len(info_part), args.patches_infer, *features.shape[1:])
+    features = features.reshape(len(info_part), args.patches_test, *features.shape[1:])
 
     print(f"  saving features={features.shape} at {features_path}")
     os.makedirs(os.path.dirname(features_path), exist_ok=True)

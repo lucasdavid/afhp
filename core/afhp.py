@@ -1,31 +1,35 @@
 import tensorflow as tf
+from tensorflow.keras import Model
 from tensorflow.keras.layers import Activation, Concatenate, Dense, LeakyReLU
 
 
 def build_generator(
-    noise: tf.Tensor,
-    context: tf.Tensor,
+    noise: tf.keras.Input,
+    context: tf.keras.Input,
     features: int,
-):
+) -> Model:
   x = Concatenate(name='concat1')([noise, context])
   y = Dense(1024, name='fc1')(x)
   y = LeakyReLU(0.2, name='a1')(y)
   y = Dense(features, name='fc2')(y)
   y = Activation('relu', name='a2')(y)
 
-  return tf.keras.Model([noise, context], y, name='wgan_features_d')
+  return Model([noise, context], y, name='wgan_features_d')
 
 
-def build_discriminator(features, context):
+def build_discriminator(
+    features: tf.keras.Input,
+    context: tf.keras.Input,
+) -> Model:
   x = Concatenate(name='concat1')([features, context])
   y = Dense(1024, name='fc1')(x)
   y = LeakyReLU(0.2, name='a1')(y)
   y = Dense(1, name='predictions')(y)
 
-  return tf.keras.Model([features, context], y, name='wgan_features_g')
+  return Model([features, context], y, name='wgan_features_g')
 
 
-def build(noise, features, **kwargs):
+def build(noise: int, features: int, **kwargs):
   noise_tensor = tf.keras.Input([noise], name='noise')
   features_tensor = tf.keras.Input([features], name='features')
   context_tensor = tf.keras.Input([features], name='context')
@@ -50,11 +54,11 @@ def build(noise, features, **kwargs):
 
 
 @tf.keras.utils.register_keras_serializable("afhp")
-class AFHP(tf.keras.Model):
+class AFHP(Model):
   def __init__(
       self,
-      discriminator,
-      generator,
+      discriminator: Model,
+      generator: Model,
       k: int = 10,
       noise: int = 512,
       d_steps: int = 3,
@@ -97,7 +101,7 @@ class AFHP(tf.keras.Model):
     x = tf.reshape(x, (-1, x.shape[-1]))
 
     return x, context
-  
+
   def call(self, inputs, training=None, mask=None):
     """Defer to Generator, hallucinating features in a given context given real samples.
     """
@@ -127,6 +131,7 @@ class AFHP(tf.keras.Model):
 
     return self.get_metrics_result()
 
+  # @tf.function(reduce_retracing=True)
   def d_train_step(self, x_real, context, batch_size):
     z1 = tf.random.normal(shape=(batch_size, self.noise))
 
@@ -148,6 +153,7 @@ class AFHP(tf.keras.Model):
 
     return update_op
 
+  # @tf.function(reduce_retracing=True)
   def g_train_step(self, x_real, y_real, x_query, y_query, context, batch_size):
     z1 = tf.random.normal(shape=(batch_size, self.noise))
     z2 = tf.random.normal(shape=(batch_size, self.noise))

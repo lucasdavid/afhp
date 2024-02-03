@@ -25,41 +25,34 @@ parser.add_argument("--data_frequent_test_size", default=0.1, type=float)
 
 # Preprocess
 parser.add_argument("--preprocess_max_size", default=6000, type=int)
-parser.add_argument("--preprocess_workers", default=16, type=int)
+parser.add_argument("--preprocess_workers", default=24, type=int)
 
-# Training
+# Features (Backbone)
+parser.add_argument("--strategy", default="ce", choices=["ce", "supcon", "supcon_mh"])
+parser.add_argument("--backbone_architecture", default="InceptionV3")
+parser.add_argument("--backbone_features_layer", default="avg_pool")
+
 parser.add_argument("--logs_dir", default="./experiments/logs/")
 parser.add_argument("--weights_dir", default="./experiments/weights/")
 parser.add_argument("--preds_dir", default="./experiments/predictions/")
 
-parser.add_argument("--patches_train", default=2, type=int)  # 2 random crops are the default in SupCon (2004.11362).
-parser.add_argument("--patches_infer", default=20, type=int)  # 2 random crops are the default in SupCon (2004.11362).
-
-# Steps
-parser.add_argument("--step_preprocess_reduce", default=True, type=str2bool)
-parser.add_argument("--step_features_train", default=False, type=str2bool)
-parser.add_argument("--step_features_infer", default=False, type=str2bool)
-parser.add_argument("--step_afhp_train", default=True, type=str2bool)
-parser.add_argument("--step_afhp_test", default=True, type=str2bool)
-
-# Features (Backbone)
+## Features (Backbone) Training
 parser.add_argument("--backbone_valid_split", type=float, default=0.3)
 parser.add_argument("--backbone_valid_seed", type=int, default=581)
 parser.add_argument("--backbone_train_workers", type=int, default=8)
 
-parser.add_argument("--backbone_model", default="ce", choices=["ce", "supcon", "supcon_mh"])
-parser.add_argument("--backbone_architecture", default="InceptionV3")
-parser.add_argument("--backbone_features_layer", default="avg_pool")
-parser.add_argument("--backbone_train_epochs_head", default=5, type=int)
+parser.add_argument("--backbone_train_epochs", default=5, type=int)
 parser.add_argument("--backbone_train_lr", default=0.01, type=float)
-parser.add_argument("--backbone_train_epochs_finetune", default=100, type=int)
+parser.add_argument("--backbone_finetune_epochs", default=100, type=int)
 parser.add_argument("--backbone_freezebn", default=False, type=str2bool)
 parser.add_argument("--backbone_finetune_layers", default="all")  # ResNet Arch => first: "conv1_pad" b4: "conv4_block1_preact_bn"
 parser.add_argument("--backbone_finetune_lr", default=0.001, type=float)
 parser.add_argument("--backbone_train_supcon_temperature", default=0.05, type=float)
 
 ## Features (Backbone) Inference
-parser.add_argument("--batch_size_infer", default=2, type=int)  # Usually small because `patches_infer` is large.
+parser.add_argument("--patches_train", default=2, type=int)  # 2 random crops are the default in SupCon (arxiv 2004.11362).
+parser.add_argument("--patches_test", default=20, type=int)  # 2 random crops are the default in SupCon (arxiv 2004.11362).
+parser.add_argument("--batch_test", default=2, type=int)  # Usually small because `patches_test` is large.
 parser.add_argument("--features_parts", default=4, type=int)  # default: 4
 
 # Adversarial Feature Hallucination Network
@@ -67,6 +60,13 @@ parser.add_argument("--afhp_problem", default="painter", type=str, choices=["pai
 parser.add_argument("--afhp_lr", default=1e-5, type=float)
 parser.add_argument("--afhp_epochs", default=100, type=int)
 parser.add_argument("--afhp_persist", default=True, type=str2bool)
+
+# Steps
+parser.add_argument("--step_preprocess_reduce", default=True, type=str2bool)
+parser.add_argument("--step_features_train", default=True, type=str2bool)
+parser.add_argument("--step_features_infer", default=True, type=str2bool)
+parser.add_argument("--step_afhp_train", default=True, type=str2bool)
+parser.add_argument("--step_afhp_test", default=True, type=str2bool)
 
 
 def run(args):
@@ -86,11 +86,11 @@ def run(args):
   train_info, test_info = datasets.pbn.train_test_split(dataset, args)
 
   if args.step_features_train or args.step_features_infer:
-    if args.backbone_model == "ce":
+    if args.strategy == "ce":
       import steps.backbone_step
       steps.backbone_step.vanilla(train_info, dataset, STRATEGY, args)
 
-    elif args.backbone_model == "supcon":
+    elif args.strategy == "supcon":
       import steps.backbone_step
       steps.backbone_step.supcon(train_info, dataset, STRATEGY, args)
 
@@ -100,7 +100,11 @@ def run(args):
 
   if args.step_afhp_train or args.step_afhp_test:
     import steps.afhp_step
-    steps.afhp_step.run(train_info, dataset, STRATEGY, args)
+    afhp_model, _, test_data = steps.afhp_step.run(train_info, dataset, STRATEGY, args)
+
+    if args.step_afhp_test:
+      import steps.fsl_step
+      steps.fsl_step.run(args, afhp_model, *test_data)
 
 
 if __name__ == "__main__":

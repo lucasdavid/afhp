@@ -1,13 +1,12 @@
 import os
 import concurrent
 
-import pandas as pd
 from PIL import Image
 
 from datasets.pbn import get_cleaned_dataset_path
 
 
-def reduce_massive_images(dataset: pd.DataFrame, args):
+def reduce_massive_images(dataset: "pd.DataFrame", args):
   max_size = args.preprocess_max_size
 
   if "is_reduced" in dataset.columns and not args.override:
