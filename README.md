@@ -1,6 +1,6 @@
 # Adversarial Feature Hallucination in a Supervised Contrastive Space for Few-Shot Learning of Provenance in Paintings
 
-Official implementation of the paper "Adversarial Feature Hallucination in a Supervised Contrastive Space for Few-Shot Learning of Provenance in Paintings", presented in LA-CCI 2023.
+Official implementation of the paper [Adversarial Feature Hallucination in a Supervised Contrastive Space for Few-Shot Learning of Provenance in Paintings](https://ieeexplore.ieee.org/document/10409405), presented in LA-CCI 2023.
 
 ![Proposal Overview](assets/afhn_overview.png)
     

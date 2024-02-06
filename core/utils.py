@@ -41,7 +41,7 @@ def get_extractor_params(args):
 
 
 def get_afhp_params(args):
-  TAG = args.strategy
+  STRATEGY = args.strategy
   BACKBONE = args.backbone_architecture
   EPOCHS_HE = args.backbone_train_epochs
   EPOCHS_FT = args.backbone_finetune_epochs
@@ -55,7 +55,8 @@ def get_afhp_params(args):
   FEATURES = 2048
   TASK_MODE = 'random'
 
-  NAME = f"pbn_{args.data_split}_{args.patch_size}_afhp_{EPOCHS}_{BACKBONE}_{TAG}_{EPOCHS_HE}_{EPOCHS_FT}"
+  BACKBONE_NAME = f"{BACKBONE}_{STRATEGY}_{EPOCHS_HE}_{EPOCHS_FT}"
+  NAME = f"pbn_{args.data_split}_{args.patch_size}_afhp_{EPOCHS}_ac{args.afhp_ac_w}_cf{args.afhp_cf_w}_gp{args.afhp_gp_w}-{BACKBONE_NAME}"
   WEIGHTS = os.path.join(args.weights_dir, NAME + ".h5")
   WEIGHTS_EXIST = os.path.exists(WEIGHTS)
 

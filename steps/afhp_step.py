@@ -1,9 +1,8 @@
 import os
-import warnings
-from typing import List, Tuple
 
 import numpy as np
 import tensorflow as tf
+from keras import callbacks as callbacks_mod
 
 from core.utils import get_extractor_params, get_afhp_params
 from datasets import pbn
@@ -46,10 +45,10 @@ def run(
       noise=NOISE,
       features=FEATURES,
       d_steps=D_STEPS,
-      gp_weight=10.0,
-      ac_weight=1.0,
-      cf_weight=1.0,
-      name=f"afhp_{ENC_NAME}",
+      gp_w=args.afhp_gp_w,
+      ac_w=args.afhp_ac_w,
+      cf_w=args.afhp_cf_w,
+      name=NAME,
     )
 
     learning_rate_D = tf.keras.optimizers.schedules.ExponentialDecay(
@@ -67,7 +66,7 @@ def run(
     afhp_model.compile(
       d_opt = tf.optimizers.Adam(learning_rate=learning_rate_D, beta_1=0.9, beta_2=0.999),
       g_opt = tf.optimizers.Adam(learning_rate=learning_rate_G, beta_1=0.9, beta_2=0.999),
-      run_eagerly=False,
+      # run_eagerly=True,
       jit_compile=True,
     )
 
@@ -87,11 +86,12 @@ def run(
 
       history = afhp_model.fit(
         train_ds,
-        epochs=args.afhp_epochs,
+        epochs=EPOCHS,
         steps_per_epoch=train_steps,
-        validation_data=test_ds,
-        validation_steps=test_steps,
+        # validation_data=test_ds,
+        # validation_steps=test_steps,
         callbacks=_callbacks(afhp_model, args),
+        use_multiprocessing=False,
         verbose=1,
       )
     except KeyboardInterrupt:
@@ -102,15 +102,18 @@ def run(
 
     if args.afhp_persist:
       afhp_model.save_weights(WEIGHTS)
+      print(f"AFHP model saved at {WEIGHTS}")
 
-    save_path =  os.path.join(args.logs_dir, afhp_model.name, "examples-embeddings.png")
-    plot_embeddings(afhp_model.G, train_ds, test_ds, save_path, NOISE)
-  
+  save_path =  os.path.join(args.logs_dir, afhp_model.name, "examples-embeddings.png")
+  afhp.plot_embeddings(afhp_model.G, train_ds, test_ds, save_path, NOISE)
+  print(f"Embedding representation saved at {save_path}")
+
   return afhp_model, (csamples_train, CLASSES_TRAIN), (csamples_test, CLASSES_TEST)
 
 
 def _callbacks(model, args):
   return [
-    tf.keras.callbacks.TerminateOnNaN(),
-    tf.keras.callbacks.TensorBoard(os.path.join(args.logs_dir, model.name), histogram_freq=1, write_graph=True, profile_batch=(10, 20)),
+    callbacks_mod.TerminateOnNaN(),
+    callbacks_mod.TensorBoard(os.path.join(args.logs_dir, model.name)),
+    callbacks_mod.BackupAndRestore(os.path.join(args.logs_dir, model.name, "backup")),
   ]

@@ -37,7 +37,7 @@ parser.add_argument("--weights_dir", default="./experiments/weights/")
 parser.add_argument("--preds_dir", default="./experiments/predictions/")
 
 ## Features (Backbone) Training
-parser.add_argument("--backbone_valid_split", type=float, default=0.3)
+parser.add_argument("--backbone_valid_split", type=float, default=0.1)
 parser.add_argument("--backbone_valid_seed", type=int, default=581)
 parser.add_argument("--backbone_train_workers", type=int, default=8)
 
@@ -60,6 +60,9 @@ parser.add_argument("--afhp_problem", default="painter", type=str, choices=["pai
 parser.add_argument("--afhp_lr", default=1e-5, type=float)
 parser.add_argument("--afhp_epochs", default=100, type=int)
 parser.add_argument("--afhp_persist", default=True, type=str2bool)
+parser.add_argument("--afhp_gp_w", default=10.0, type=float)
+parser.add_argument("--afhp_ac_w", default=1.0, type=float)
+parser.add_argument("--afhp_cf_w", default=1.0, type=float)
 
 # Steps
 parser.add_argument("--step_preprocess_reduce", default=True, type=str2bool)

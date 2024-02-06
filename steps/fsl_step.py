@@ -105,7 +105,7 @@ def _run_experiment(
     all_results += batch_results
 
     if (task+1) % 100 == 0:
-      print(f"{(task+1)}/{tasks} ({(task+1)/tasks:.0%})", end=" ")
+      print(f"{task/tasks:.0%} ", end="")
     elif (task+1) % 10 == 0:
       print(".", end="")
 
@@ -116,7 +116,7 @@ def _run_experiment(
   
   print()
 
-  all_results /= task
+  all_results /= tasks+1
 
   return (task, *all_results.tolist())
 

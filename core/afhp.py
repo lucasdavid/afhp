@@ -62,18 +62,18 @@ class AFHP(Model):
       k: int = 10,
       noise: int = 512,
       d_steps: int = 3,
-      gp_weight: float = 10.0,
-      ac_weight: float = 1.0,
-      cf_weight: float = 1.0,
+      gp_w: float = 10.0,
+      ac_w: float = 1.0,
+      cf_w: float = 1.0,
       **kwargs
   ):
     super(AFHP, self).__init__(**kwargs)
     self.D = discriminator
     self.G = generator
     self.d_steps = d_steps
-    self.gp_weight = gp_weight
-    self.ac_weight = ac_weight
-    self.cf_weight = cf_weight
+    self.gp_w = gp_w
+    self.ac_w = ac_w
+    self.cf_w = cf_w
     self.k = k
     self.noise = noise
 
@@ -118,113 +118,79 @@ class AFHP(Model):
 
   def train_step(self, inputs):
     x_real, y_real, x_query, y_query = inputs
-    x_real, context = self.build_context(x_real)
 
-    batch_size = tf.shape(x_real)[0]
+    with tf.GradientTape(persistent=True) as tape:
+      d_loss, gp_loss, c_loss, a_loss, g_loss = self._train_forward(x_real, y_real, x_query, y_query)
 
-    self.d_train_step(x_real, context, batch_size)
+      d_loss_t = d_loss + self.gp_w * gp_loss
+      g_loss_t = g_loss + self.ac_w * a_loss + self.cf_w * c_loss
 
-    iterations = self.d_opt.iterations
+    g = tape.gradient(d_loss_t, self.D.trainable_variables)
+    self.d_opt.apply_gradients(zip(g, self.D.trainable_variables))
 
-    if iterations % self.d_steps == 0:
-      self.g_train_step(x_real, y_real, x_query, y_query, context, batch_size)
+    self.update_metric_trackers(
+      d_loss=d_loss,
+      gp_loss=gp_loss,
+    )
+
+    if self.d_opt.iterations % self.d_steps == 0:
+      g = tape.gradient(g_loss_t, self.G.trainable_variables)
+      self.g_opt.apply_gradients(zip(g, self.G.trainable_variables))
+
+      self.update_metric_trackers(
+        g_loss=g_loss,
+        a_loss=a_loss,
+        c_loss=c_loss,
+        t_loss=g_loss_t,
+      )
 
     return self.get_metrics_result()
 
-  # @tf.function(reduce_retracing=True)
-  def d_train_step(self, x_real, context, batch_size):
-    z1 = tf.random.normal(shape=(batch_size, self.noise))
-
-    with tf.GradientTape() as tape:
-      x_fake = self.G([z1, context], training=True)
-      p_fake = self.D([x_fake, context], training=True)
-      p_real = self.D([x_real, context], training=True)
-
-      gp_loss = gradient_penalty(x_real, x_fake, context, batch_size, self.D)
-      d_loss = (discriminator_loss(p_real, p_fake) + self.gp_weight * gp_loss)
-
-    g = tape.gradient(d_loss, self.D.trainable_variables)
-    update_op = self.d_opt.apply_gradients(zip(g, self.D.trainable_variables))
-
-    self.update_metric_trackers(
-      gp_loss=gp_loss,
-      d_loss=d_loss
-    )
-
-    return update_op
-
-  # @tf.function(reduce_retracing=True)
-  def g_train_step(self, x_real, y_real, x_query, y_query, context, batch_size):
-    z1 = tf.random.normal(shape=(batch_size, self.noise))
-    z2 = tf.random.normal(shape=(batch_size, self.noise))
-
-    with tf.GradientTape() as tape:
-      x_fake1 = self.G([z1, context], training=True)
-      x_fake2 = self.G([z2, context], training=True)
-
-      p_fake1 = self.D([x_fake1, context], training=True)
-      p_fake2 = self.D([x_fake2, context], training=True)
-
-      g_loss = generator_loss(p_fake1, p_fake2)
-      a_loss = 1 / anti_collapse_regularizer(z1, z2, x_fake1, x_fake2)
-      c_loss = classifier_loss(x_fake1[::self.k], x_fake2[::self.k], y_real, x_query, y_query)
-      t_loss = (
-        g_loss
-        + self.ac_weight * a_loss
-        + self.cf_weight * c_loss
-      )
-
-    g = tape.gradient(t_loss, self.G.trainable_variables)
-    update_op = self.g_opt.apply_gradients(zip(g, self.G.trainable_variables))
-
-    self.update_metric_trackers(
-      g_loss=g_loss,
-      a_loss=a_loss,
-      t_loss=t_loss,
-      c_loss=c_loss
-    )
-
-    return update_op
-
   def test_step(self, inputs):
     x_real, y_real, x_query, y_query = inputs
-    x_real, context = self.build_context(x_real)
 
+    d_loss, gp_loss, c_loss, a_loss, g_loss = self._train_forward(x_real, y_real, x_query, y_query)
+
+    d_loss_t = d_loss + self.gp_w * gp_loss
+    g_loss_t = g_loss + self.ac_w * a_loss + self.cf_w * c_loss
+
+    self.update_metric_trackers(
+      d_loss=d_loss,
+      gp_loss=gp_loss,
+      g_loss=g_loss,
+      a_loss=a_loss,
+      c_loss=c_loss,
+      t_loss=g_loss_t,
+    )
+
+    return self.get_metrics_result()
+  
+  # @tf.function(reduce_retracing=True, jit_compile=True)
+  def _train_forward(self, x_real: tf.Tensor, y_real: tf.Tensor, x_query: tf.Tensor, y_query: tf.Tensor):
+    x_real, context = self.build_context(x_real)
     batch_size = tf.shape(x_real)[0]
 
     z = tf.random.normal(shape=(2 * batch_size, self.noise))
     z1, z2 = tf.split(z, 2)
 
-    x_fake = self.G([z, tf.tile(context, (2, 1))], training=False)
+    c2 = tf.tile(context, (2, 1))
+    c3 = tf.tile(context, (3, 1))
+
+    x_fake = self.G([z, c2], training=True)
     x_fake1, x_fake2 = tf.split(x_fake, 2)
+    x_all = tf.concat((x_fake, x_real), axis=0)
 
-    x = tf.concat((x_real, x_fake), axis=0)
+    p_all = self.D([x_all, c3], training=True)
+    p_fake1, p_fake2, p_real = tf.split(p_all, 3)
 
-    p = self.D([x, tf.tile(context, (3, 1))], training=False)
-    p_real, p_fake1, p_fake2 = tf.split(p, 3)
-
-    d_loss = discriminator_loss(p_real, p_fake1)
     gp_loss = gradient_penalty(x_real, x_fake1, context, batch_size, self.D)
-
+    d_loss = discriminator_loss(p_real, p_fake1)
+  
     g_loss = generator_loss(p_fake1, p_fake2)
     a_loss = 1 / anti_collapse_regularizer(z1, z2, x_fake1, x_fake2)
-    c_loss = classifier_loss(x_fake1[::self.k], x_fake2[::self.k], y_real[::self.k], x_query, y_query)
-    t_loss = (
-      g_loss
-      + self.ac_weight * a_loss
-      + c_loss
-    )
+    c_loss = classifier_loss(x_fake1[::self.k], x_fake2[::self.k], y_real, x_query, y_query)
 
-    self.update_metric_trackers(
-      g_loss=g_loss,
-      a_loss=a_loss,
-      c_loss=c_loss,
-      t_loss=t_loss,
-      d_loss=d_loss,
-      gp_loss=gp_loss,
-    )
-
-    return self.get_metrics_result()
+    return d_loss, gp_loss, c_loss, a_loss, g_loss
 
 
 def discriminator_loss(p_real, p_fake):
@@ -274,3 +240,76 @@ def classifier_loss(x1_fake, x2_fake, y_real, x_q, y_q):
   loss_z2 = tf.nn.sparse_softmax_cross_entropy_with_logits(y_q, cos)
 
   return tf.reduce_mean(loss_z1) + tf.reduce_mean(loss_z2)
+
+
+#region Visualizing Hallucinated Features
+
+def plot_embeddings(G, train_ds, test_ds, save_path, noise_features, extra_k=50):
+  import seaborn as sns
+  import matplotlib.pyplot as plt
+  sns.set(style="whitegrid")
+
+  fig = plt.figure(figsize=(16, 9))
+  plt.subplot(121)
+  x, y, is_real = _gen_fake_features(G, train_ds, noise_features, extra_k=extra_k)
+  _vis_fake_features(x, y, is_real)
+  plt.xlabel('Training')
+
+  plt.subplot(122)
+  x, y, is_real = _gen_fake_features(G, test_ds, noise_features, extra_k=extra_k)
+  _vis_fake_features(x, y, is_real)
+  plt.xlabel('Testing')
+
+  plt.tight_layout()
+  fig.savefig(save_path)
+  fig.clf()
+  del fig
+
+
+def _gen_fake_features(G, dataset, noise_features, extra_k=50):
+  samples = []
+
+  (x_real, y_real, x_query, y_query), = list(dataset.take(1))
+
+  # Hallucinate GC new samples using the generator.
+  context = tf.reduce_mean(x_real, axis=1) # [5,10,2048] -> [5,2048]
+  context = tf.repeat(context, extra_k, axis=0)
+
+  z1 = tf.random.normal((context.shape[0], noise_features))
+  x1_fake = G.predict_on_batch([z1, context])
+  x1_fake = tf.convert_to_tensor(x1_fake)
+
+  y_fake = tf.repeat(y_real, extra_k, axis=0)
+
+  B, K, F = x_real.shape
+
+  x_real = tf.reshape(x_real, (-1, F))
+  y_real = tf.repeat(y_real, K, axis=0)
+
+  samples.append((x_real, y_real, tf.ones_like(y_real)))
+  samples.append(((x1_fake, y_fake, tf.zeros_like(y_fake))))
+
+  x, y, is_real = (tf.concat(e, axis=0).numpy() for e in zip(*samples))
+
+  return x, y, is_real.astype(bool)
+
+
+def _vis_fake_features(x, y, is_real):
+  import warnings
+
+  import numpy as np
+  import seaborn as sns
+  import matplotlib.pyplot as plt
+  from sklearn.manifold import TSNE
+
+  with warnings.catch_warnings():
+    warnings.simplefilter(action='ignore', category=FutureWarning)
+
+    z = TSNE(init='pca', learning_rate='auto').fit_transform(x)
+    y = np.char.add("class ", y.astype("str"))
+
+    sns.scatterplot(x=z[is_real, 0], y=z[is_real, 1], hue=y[is_real], marker='s', label='Original', alpha=0.8, legend=False)
+    sns.scatterplot(x=z[~is_real, 0], y=z[~is_real, 1], hue=y[~is_real], label='Generated', alpha=0.8, legend='brief')
+    plt.legend()
+
+# endregion

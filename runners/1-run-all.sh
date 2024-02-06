@@ -40,26 +40,27 @@ fi
 cd $WORK_DIR
 
 DATA_SPLIT=frequent  # frequent, original
-STRATEGY=ce    # ce, supcon, supcon_mh
-BACKBONE=InceptionV3  # ResNet50
+STRATEGY=ce          # ce, supcon, supcon_mh
+BACKBONE=InceptionV3  # ResNet50V2
 
 PATCHES_TRAIN=2   # 2 for each sample, ensuring two samples with the class in a batch, necessary for SupCon.
 PATCHES_INFER=20  # patches extracted for each sample during inference.
 PATCH_SIZE=299
 FEATURES_PARTS=4
 
-BATCH_TRAIN=128      # True batch = BATCH_TRAIN * PATCHES_TRAIN = 32 * 2 = 64
-BATCH_TEST=2  # True batch = BATCH_TRAIN * PATCHES_INFER = 2 * 20 = 40
+BATCH_TRAIN=128   # True batch = BATCH_TRAIN * PATCHES_TRAIN = 32 * 2 = 64
+BATCH_TEST=2      # True batch = BATCH_TRAIN * PATCHES_INFER = 2 * 20 = 40
 
 EPOCHS_HE=5
 EPOCHS_FT=100
 LR_HE=0.05
 LR_FT=0.01
 
-EPOCHS_AF=100
+EPOCHS_AF=20
 LR_AF=0.00001
 
 GPUS=all
+DEVICES="0"
 WORKERS=8
 
 MIXED_PRECISION=false  # true
@@ -75,15 +76,15 @@ function build_arguments() {
     --strategy $STRATEGY --backbone_architecture $BACKBONE \
     --backbone_train_epochs    $EPOCHS_HE --backbone_train_lr    $LR_HE \
     --backbone_finetune_epochs $EPOCHS_FT --backbone_finetune_lr $LR_FT \
-    --afhp_epochs              $EPOCHS_AF --afhp_lr              $LR_AF \
+    --afhp_epochs $EPOCHS_AF --afhp_lr $LR_AF \
     --step_preprocess_reduce true \
-    --step_features_train false \
-    --step_features_infer false \
+    --step_features_train false   \
+    --step_features_infer false   \
     --step_afhp_train true";
 }
 
 function run_local() {
-  $PY run.py `build_arguments`
+  CUDA_VISIBLE_DEVICES=$DEVICES $PY run.py `build_arguments`
 }
 
 function run_docker() {
@@ -111,7 +112,7 @@ function run_all_local() {
   STRATEGY=supcon
   EPOCHS_HE=0
   EPOCHS_FT=100
-  run_local
+  # run_local
 
   STRATEGY=supcon_mh
   EPOCHS_HE=0
@@ -119,7 +120,10 @@ function run_all_local() {
   run_local
 }
 
+# region Low-tier Hardware
+# PATCH_SIZE=224
 PATCHES_INFER=4  # patches extracted for each sample during inference.
+# endregion
 
 # Frequent Split (Most frequent painters are used to train the feature extractor).
 DATA_SPLIT=frequent run_all_local
