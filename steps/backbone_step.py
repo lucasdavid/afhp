@@ -156,7 +156,7 @@ def supcon(
     else:
       callbacks = _callbacks(model, "finetune", args) + [
         tf.keras.callbacks.EarlyStopping(patience=50, verbose=1),
-        tf.keras.callbacks.ModelCheckpoint(WEIGHTS, save_weights_only=True, save_best_only=True, verbose=1),
+        tf.keras.callbacks.ModelCheckpoint(WEIGHTS, save_weights_only=True, save_best_only=True, verbose=1, monitor="val_project_painter_loss"),
       ]
       model.fit(train_ds, validation_data=valid_ds, epochs=EPOCHS_FT, callbacks=callbacks, workers=W, verbose=1)
 
