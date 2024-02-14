@@ -1,5 +1,5 @@
-# tensorflow==2.9.3
-# tensorflow-addons==0.19.0
+tensorflow
+tensorflow-addons
 PyYAML
 h5py
 pandas

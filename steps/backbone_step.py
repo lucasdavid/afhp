@@ -9,6 +9,15 @@ from core.utils import unfreeze_top_layers, get_extractor_params
 import datasets.pbn
 
 
+def build_optimizer(name, lr):
+  if name == "adam":
+    return tf.keras.optimizers.Adam(learning_rate=lr)
+  if name == "sgd":
+    return tf.keras.optimizers.SGD(learning_rate=lr)
+  if name == "momentum":
+    return tf.keras.optimizers.SGD(learning_rate=lr, momentum=0.9, nesterov=True)
+
+
 def build_vanilla(name, size, classes, backbone_name):
   backbone_fn = getattr(tf.keras.applications, backbone_name)
   backbone = backbone_fn(include_top=False, weights="imagenet", input_shape=[size, size, 3], pooling=None)
@@ -41,15 +50,10 @@ def vanilla(
     backbone.trainable = False
 
     model.compile(
-      optimizer=tf.keras.optimizers.SGD(
-        learning_rate=args.backbone_train_lr,
-        momentum=0.9,
-        nesterov=True,
-        # weight_decay=0.1,
-      ),
+      optimizer=build_optimizer(args.backbone_optimizer, args.backbone_train_lr),
       loss=tf.losses.SparseCategoricalCrossentropy(),
       metrics=_metrics(),
-      jit_compile=True,
+      jit_compile=args.jit_compile,
     )
     model.summary()
 
@@ -70,26 +74,22 @@ def vanilla(
         args.backbone_freezebn,
       )
 
-      # learning_rate=args.backbone_finetune_lr
       learning_rate = tf.keras.optimizers.schedules.CosineDecay(
         initial_learning_rate=args.backbone_finetune_lr,
         decay_steps=len(train_ds) * EPOCHS_FT,
       )
       model.compile(
-        optimizer=tf.keras.optimizers.SGD(
-          learning_rate=learning_rate, momentum=0.9, nesterov=True,
-          # weight_decay=0.1,
-        ),
+        optimizer=build_optimizer(args.backbone_optimizer, learning_rate),
         loss=tf.losses.SparseCategoricalCrossentropy(),
         metrics=_metrics(),
-        jit_compile=True,
+        jit_compile=args.jit_compile,
       )
 
     if WEIGHTS_EXIST and not args.override:
       print(f"  Previous training found. Skipping training and loading weights from `{WEIGHTS}`.")
     else:
       callbacks = _callbacks(model, "finetune", args) + [
-        tf.keras.callbacks.EarlyStopping(patience=50, verbose=1),
+        tf.keras.callbacks.EarlyStopping(patience=10, verbose=1),
         tf.keras.callbacks.ModelCheckpoint(WEIGHTS, save_weights_only=True, save_best_only=True, verbose=1),
       ]
       model.fit(train_ds, validation_data=valid_ds, epochs=EPOCHS_FT, callbacks=callbacks, workers=W, verbose=1)
@@ -143,20 +143,17 @@ def supcon(
         decay_steps=len(train_ds) * EPOCHS_FT,
       )
       model.compile(
-        optimizer=tf.keras.optimizers.SGD(
-          learning_rate=learning_rate, momentum=0.9, nesterov=True,
-          # weight_decay=0.1,
-        ),
+        optimizer=build_optimizer(args.backbone_optimizer, learning_rate),
         loss=supcon.SupervisedContrastiveLoss(temperature=args.backbone_train_supcon_temperature),
-        jit_compile=True,
+        jit_compile=args.jit_compile,
       )
 
     if WEIGHTS_EXIST and not args.override:
       print(f"  Previous training found. Skipping training and loading weights from `{WEIGHTS}`.")
     else:
       callbacks = _callbacks(model, "finetune", args) + [
-        tf.keras.callbacks.EarlyStopping(patience=50, verbose=1),
-        tf.keras.callbacks.ModelCheckpoint(WEIGHTS, save_weights_only=True, save_best_only=True, verbose=1, monitor="val_project_painter_loss"),
+        tf.keras.callbacks.EarlyStopping(patience=10, verbose=1),
+        tf.keras.callbacks.ModelCheckpoint(WEIGHTS, save_weights_only=True, save_best_only=True, verbose=1),
       ]
       model.fit(train_ds, validation_data=valid_ds, epochs=EPOCHS_FT, callbacks=callbacks, workers=W, verbose=1)
 
@@ -211,24 +208,23 @@ def supcon_mh(
         initial_learning_rate=args.backbone_finetune_lr,
         decay_steps=len(train_ds) * EPOCHS_FT,
       )
-      optimizer = tf.keras.optimizers.SGD(
-        learning_rate=learning_rate, momentum=0.9, nesterov=True,
-        # weight_decay=0.1,
+      model.compile(
+        optimizer=build_optimizer(args.backbone_optimizer, learning_rate),
+        loss={
+          'painter': supcon.SupervisedContrastiveLoss(temperature=args.backbone_train_supcon_temperature),
+          'style': supcon.SupervisedContrastiveLoss(temperature=args.backbone_train_supcon_temperature),
+          'genre': supcon.SupervisedContrastiveLoss(temperature=args.backbone_train_supcon_temperature),
+        },
+        loss_weights={'painter': 0.4, 'style': 0.3, 'genre': 0.3},
+        jit_compile=args.jit_compile,
       )
-      loss_weights = {'painter': 0.4, 'style': 0.3, 'genre': 0.3}
-      loss = {
-        'painter': supcon.SupervisedContrastiveLoss(temperature=args.backbone_train_supcon_temperature),
-        'style': supcon.SupervisedContrastiveLoss(temperature=args.backbone_train_supcon_temperature),
-        'genre': supcon.SupervisedContrastiveLoss(temperature=args.backbone_train_supcon_temperature),
-      }
-      model.compile(optimizer=optimizer, loss=loss, loss_weights=loss_weights, jit_compile=True)
 
     if WEIGHTS_EXIST and not args.override:
       print(f"  Previous training found. Skipping training and loading weights from `{WEIGHTS}`.")
     else:
       callbacks = _callbacks(model, "finetune", args) + [
-        tf.keras.callbacks.EarlyStopping(patience=50, verbose=1),
-        tf.keras.callbacks.ModelCheckpoint(WEIGHTS, save_weights_only=True, save_best_only=True, verbose=1),
+        tf.keras.callbacks.EarlyStopping(patience=10, verbose=1),
+        tf.keras.callbacks.ModelCheckpoint(WEIGHTS, save_weights_only=True, save_best_only=True, verbose=1, monitor="val_project_painter_loss"),
       ]
       model.fit(train_ds, validation_data=valid_ds, epochs=EPOCHS_FT, callbacks=callbacks, workers=W, verbose=1)
 

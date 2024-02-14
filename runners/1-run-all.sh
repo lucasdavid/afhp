@@ -5,7 +5,7 @@
 #SBATCH -J pbn-supcon
 #SBATCH -o /scratch/lerdl/lucas.david/afhp/experiments/logs/%j-pbn-supconmh.out
 #SBATCH --time=48:00:00
-#SBATCH --exclusive
+# SBATCH --exclusive
 
 
 echo "[train.baseline.sh] started running at $(date +'%Y-%m-%d %H:%M:%S')."
@@ -53,8 +53,8 @@ BATCH_TEST=2      # True batch = BATCH_TRAIN * PATCHES_INFER = 2 * 20 = 40
 
 EPOCHS_HE=0
 EPOCHS_FT=100
-LR_HE=0.05
-LR_FT=0.01
+LR_HE=0.001
+LR_FT=0.001
 
 EPOCHS_AF=20
 LR_AF=0.00001
@@ -64,10 +64,11 @@ DEVICES=0,1  # 0,1
 GPUS=all
 
 MIXED_PRECISION=false  # true
+JIT_COMPILE=false
 OVERRIDE=false
 
 function build_arguments() {
-  echo "--override $OVERRIDE --mixed_precision $MIXED_PRECISION \
+  echo "--override $OVERRIDE --mixed_precision $MIXED_PRECISION --jit_compile $JIT_COMPILE \
     --data_split $DATA_SPLIT --patch_size $PATCH_SIZE --batch_size $BATCH_TRAIN --batch_test $BATCH_TEST \
     --patches_train $PATCHES_TRAIN --patches_test $PATCHES_INFER \
     --features_parts $FEATURES_PARTS --backbone_train_workers $WORKERS \
@@ -76,12 +77,15 @@ function build_arguments() {
     --backbone_finetune_epochs $EPOCHS_FT --backbone_finetune_lr $LR_FT \
     --afhp_epochs $EPOCHS_AF --afhp_lr $LR_AF \
     --step_preprocess_reduce true \
-    --step_features_train true \
-    --step_features_infer false \
-    --step_afhp_train false";
+    --step_features_train true --step_features_infer true \
+    --step_afhp_train true --step_afhp_test true";
 }
 
 function run_local() {
+  echo "==========================================================="
+  echo "[Run] $BACKBONE $STRATEGY"
+  echo "==========================================================="
+
   CUDA_VISIBLE_DEVICES=$DEVICES $PY run.py `build_arguments`
 }
 
@@ -101,15 +105,15 @@ function run_all_local() {
   STRATEGY=ce
   EPOCHS_HE=0
   EPOCHS_FT=0
+  run_local
+
+  # EPOCHS_HE=5
+  # EPOCHS_FT=100
   # run_local
 
-  EPOCHS_HE=5
-  EPOCHS_FT=100
-  # run_local
-
-  STRATEGY=supcon
-  EPOCHS_HE=0
-  EPOCHS_FT=100
+  # STRATEGY=supcon
+  # EPOCHS_HE=0
+  # EPOCHS_FT=100
   # run_local
 
   STRATEGY=supcon_mh

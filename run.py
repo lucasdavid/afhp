@@ -15,6 +15,7 @@ parser = ArgumentParser()
 parser.add_argument("--seed", default=0, type=int)
 parser.add_argument("--override", default=False, type=str2bool)
 parser.add_argument("--mixed_precision", default=False, type=str2bool)
+parser.add_argument("--jit_compile", default=False, type=str2bool)
 
 # Dataset
 parser.add_argument("--data_dir", default="./data")
@@ -40,13 +41,14 @@ parser.add_argument("--preds_dir", default="./experiments/predictions/")
 parser.add_argument("--backbone_valid_split", type=float, default=0.1)
 parser.add_argument("--backbone_valid_seed", type=int, default=581)
 parser.add_argument("--backbone_train_workers", type=int, default=8)
+parser.add_argument("--backbone_optimizer", default="adam", type=str, choices=["sgd", "adam", "momentum"])
 
 parser.add_argument("--backbone_train_epochs", default=5, type=int)
-parser.add_argument("--backbone_train_lr", default=0.01, type=float)
+parser.add_argument("--backbone_train_lr", default=0.001, type=float)
 parser.add_argument("--backbone_finetune_epochs", default=100, type=int)
 parser.add_argument("--backbone_freezebn", default=False, type=str2bool)
 parser.add_argument("--backbone_finetune_layers", default="all")  # ResNet Arch => first: "conv1_pad" b4: "conv4_block1_preact_bn"
-parser.add_argument("--backbone_finetune_lr", default=0.001, type=float)
+parser.add_argument("--backbone_finetune_lr", default=0.0001, type=float)
 parser.add_argument("--backbone_train_supcon_temperature", default=0.05, type=float)
 
 ## Features (Backbone) Inference
