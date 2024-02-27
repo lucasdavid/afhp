@@ -33,6 +33,16 @@ def run(
 
   fnames_train, feats_train = fnames[is_train], features[is_train]
   fnames_test, feats_test   = fnames[~is_train], features[~is_train]
+
+  _, n_pts, n_feats = feats_train.shape
+
+  fmin, fmax = feats_train.min(), feats_train.max()
+
+  feats_train -= fmin
+  feats_train /= fmax
+  feats_test -= fmin
+  feats_test /= fmax
+
   csamples_train, CLASSES_TRAIN = fsl.groupby_class(fnames_train, feats_train, all_info, class_col=PROBLEM)
   csamples_test, CLASSES_TEST = fsl.groupby_class(fnames_test, feats_test, all_info, class_col=PROBLEM)
   train_ds = fsl.build_support_query_tf_dataset(csamples_train, K, N, Q, FEATURES, TASK_MODE)
@@ -66,7 +76,6 @@ def run(
     afhp_model.compile(
       d_opt = tf.optimizers.Adam(learning_rate=learning_rate_D, beta_1=0.9, beta_2=0.999),
       g_opt = tf.optimizers.Adam(learning_rate=learning_rate_G, beta_1=0.9, beta_2=0.999),
-      # run_eagerly=True,
       jit_compile=True,
     )
 
@@ -88,8 +97,6 @@ def run(
         train_ds,
         epochs=EPOCHS,
         steps_per_epoch=train_steps,
-        # validation_data=test_ds,
-        # validation_steps=test_steps,
         callbacks=_callbacks(afhp_model, args),
         use_multiprocessing=False,
         verbose=1,

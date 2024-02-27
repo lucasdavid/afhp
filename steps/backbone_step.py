@@ -123,7 +123,7 @@ def supcon(
   with distributed_strategy.scope():
     backbone_fn = getattr(tf.keras.applications, BACKBONE)
     backbone = backbone_fn(include_top=False, weights="imagenet", input_shape=[S, S, 3], pooling=None)
-    model = supcon.supcon_encoder_network(backbone.input, backbone, name=NAME)
+    model = supcon.supcon_encoder(backbone.input, backbone, name=NAME)
 
   if EPOCHS_FT > 0:
     print("=" * 65)
@@ -189,7 +189,7 @@ def supcon_mh(
   with distributed_strategy.scope():
     backbone_fn = getattr(tf.keras.applications, BACKBONE)
     backbone = backbone_fn(include_top=False, weights="imagenet", input_shape=[S, S, 3], pooling=None)
-    model = supcon.supcon_encoder_multitask_network(backbone.input, backbone, name=NAME)
+    model = supcon.supcon_encoder_mh(backbone.input, backbone, name=NAME)
 
   if EPOCHS_FT > 0:
     print("=" * 65)
@@ -203,7 +203,6 @@ def supcon_mh(
         args.backbone_freezebn,
       )
 
-      # learning_rate=args.backbone_finetune_lr
       learning_rate = tf.keras.optimizers.schedules.CosineDecay(
         initial_learning_rate=args.backbone_finetune_lr,
         decay_steps=len(train_ds) * EPOCHS_FT,
@@ -224,7 +223,7 @@ def supcon_mh(
     else:
       callbacks = _callbacks(model, "finetune", args) + [
         tf.keras.callbacks.EarlyStopping(patience=10, verbose=1),
-        tf.keras.callbacks.ModelCheckpoint(WEIGHTS, save_weights_only=True, save_best_only=True, verbose=1, monitor="val_project_painter_loss"),
+        tf.keras.callbacks.ModelCheckpoint(WEIGHTS, save_weights_only=True, save_best_only=True, verbose=1, monitor="val_painter_project_head_loss"),
       ]
       model.fit(train_ds, validation_data=valid_ds, epochs=EPOCHS_FT, callbacks=callbacks, workers=W, verbose=1)
 

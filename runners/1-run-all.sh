@@ -3,7 +3,7 @@
 #SBATCH --ntasks-per-node=24
 #SBATCH -p nvidia_long
 #SBATCH -J pbn-supcon
-#SBATCH -o /scratch/lerdl/lucas.david/afhp/experiments/logs/%j-pbn-supconmh.out
+#SBATCH -o /scratch/lerdl/lucas.david/afhp/experiments/logs/%j-pbn-ce.out
 #SBATCH --time=48:00:00
 # SBATCH --exclusive
 
@@ -42,6 +42,7 @@ cd $WORK_DIR
 DATA_SPLIT=frequent  # frequent, original
 STRATEGY=ce    # ce, supcon, supcon_mh
 BACKBONE=ResNet50V2  # ResNet50
+BACKBONE_FEATURES_LAYER=avg_pool
 
 PATCHES_TRAIN=2   # 2 for each sample, ensuring two samples with the class in a batch, necessary for SupCon.
 PATCHES_INFER=20  # patches extracted for each sample during inference.
@@ -72,11 +73,11 @@ function build_arguments() {
     --data_split $DATA_SPLIT --patch_size $PATCH_SIZE --batch_size $BATCH_TRAIN --batch_test $BATCH_TEST \
     --patches_train $PATCHES_TRAIN --patches_test $PATCHES_INFER \
     --features_parts $FEATURES_PARTS --backbone_train_workers $WORKERS \
-    --strategy $STRATEGY --backbone_architecture $BACKBONE \
+    --strategy $STRATEGY --backbone_architecture $BACKBONE --backbone_features_layer $BACKBONE_FEATURES_LAYER \
     --backbone_train_epochs    $EPOCHS_HE --backbone_train_lr    $LR_HE \
     --backbone_finetune_epochs $EPOCHS_FT --backbone_finetune_lr $LR_FT \
     --afhp_epochs $EPOCHS_AF --afhp_lr $LR_AF \
-    --step_preprocess_reduce true \
+    --step_preprocess_reduce false \
     --step_features_train true --step_features_infer true \
     --step_afhp_train true --step_afhp_test true";
 }
@@ -105,20 +106,20 @@ function run_all_local() {
   STRATEGY=ce
   EPOCHS_HE=0
   EPOCHS_FT=0
-  run_local
-
-  # EPOCHS_HE=5
-  # EPOCHS_FT=100
   # run_local
 
-  # STRATEGY=supcon
-  # EPOCHS_HE=0
-  # EPOCHS_FT=100
+  EPOCHS_HE=5
+  EPOCHS_FT=100
+  # run_local
+
+  BACKBONE_FEATURES_LAYER=painter_proj1
+  EPOCHS_HE=0
+  EPOCHS_FT=100
+  
+  STRATEGY=supcon
   # run_local
 
   STRATEGY=supcon_mh
-  EPOCHS_HE=0
-  EPOCHS_FT=100
   run_local
 }
 
