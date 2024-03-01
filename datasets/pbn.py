@@ -21,19 +21,20 @@ cv2.setNumThreads(0)
 
 class PbNPatchesSequence(Sequence):
 
-    def __init__(self, info, targets, batch_size, sample_size=None, patch_size=299, patches=1, target_encoder=None, augment=False):
+    def __init__(self, info, targets, batch_size, sample_size=None, patch_size=299, patches=1, positives=1, target_encoder=None, augment=False):
       self.info = info
       self.batch_size = batch_size
       self.sample_size = sample_size
       self.patch_size = patch_size
       self.patches = patches
+      self.positives = positives
       self.augment = augment
 
       if not isinstance(targets, dict):
         self.multi_output = False
-        targets = {"group_0": targets}
+        targets = {"painter": targets}
         if target_encoder is not None and not isinstance(target_encoder, dict):
-          target_encoder = {"group_0": target_encoder}
+          target_encoder = {"painter": target_encoder}
       else:
         self.multi_output = True
 
@@ -43,8 +44,7 @@ class PbNPatchesSequence(Sequence):
 
     @property
     def painters(self):
-      key = "painter" if "painter" in self.target_encoder else "group_0"
-      return self.target_encoder[key].classes_
+      return self.target_encoder["painter"].classes_
 
     def __len__(self):
       return math.ceil(len(self.info) / self.batch_size)
@@ -55,23 +55,31 @@ class PbNPatchesSequence(Sequence):
       low = idx * self.batch_size
       high = min(low + self.batch_size, len(self.info))
 
-      batch_images = []
+      batch_indices = list(range(low, high))
+      batch_targets = self.target_indices["painter"][batch_indices]
 
-      for p in self.info[low:high].full_path:
-        with Image.open(p) as img:
+      if self.positives > 1:
+        pos_indices = []
+        for target in batch_targets:
+          indices_same_class, = np.where(target == self.target_indices["painter"])
+          pos_indices += np.random.choice(indices_same_class, size=self.positives - 1).tolist()
+        batch_indices += pos_indices
+
+      batch_images = []
+      for path in self.info.iloc[batch_indices].full_path:
+        with Image.open(path) as img:
           img = img.convert("RGB")
           for _ in range(self.patches):
             batch_images.append(self.transform(img))
 
       batch_images = np.stack(batch_images, 0)
+      batch_targets = {n: np.repeat(idxs[batch_indices].astype("int64"), self.patches)
+                       for n, idxs in self.target_indices.items()}
 
-      if self.multi_output:
-        targets = {name: np.repeat(tensor[low:high].astype("int64"), self.patches)
-                   for name, tensor in self.target_indices.items()}
-      else:
-        targets = np.repeat(self.target_indices["group_0"][low:high].astype("int64"), self.patches)
+      if not self.multi_output:
+        batch_targets = batch_targets["painter"]
 
-      return batch_images, targets
+      return batch_images, batch_targets
 
     def transform(self, x):
       if self.sample_size:
@@ -326,7 +334,7 @@ def fix_names_with_digits(info):
 
   return info
 
-#-----------------------------------------------------
+
 def get_artist_per_hash(mapping, counter):
   map_corrected = {}
 
@@ -345,7 +353,7 @@ def get_artist_per_hash(mapping, counter):
 
   return map_corrected
 
-#-----------------------------------------------------
+
 ## Creates a map, associating a unique hash with all unique artist names that belong to it
 def create_name_hash_map(info):
   name_hash_map = {}
@@ -368,7 +376,7 @@ def create_name_hash_map(info):
 
   return name_hash_map, hash_nan, hash_count_one, hash_count_more
 
-#-----------------------------------------------------
+
 def fix_hashes_with_several_names(info, hash_count_more):
   ## Counts the frequency of each artist in the dataset
   all_artist_names = info['new_artist_name'].values
@@ -382,7 +390,7 @@ def fix_hashes_with_several_names(info, hash_count_more):
 
   return info
 
-#-----------------------------------------------------
+
 def fix_artist_without_hash(info):
   info.loc[(info['new_artist_name'] == 'At Les Ambassadeurs'), 'new_artist_name'] = 'Edgar Degas'
   ###
@@ -628,7 +636,7 @@ def fix_hashes(info):
 
   return info
 
-#-----------------------------------------------------
+
 def fix_remaining_erros(info):
   info.loc[(info['new_artist_name'] == 'Setsu Getsu Ka') & (info['style'] == 'Ukiyo-e'), 'new_artist_name'] = 'Toyohara Chikanobu'
   ###
@@ -655,7 +663,7 @@ def fix_remaining_erros(info):
 
   return info
 
-#-----------------------------------------------------
+
 def clean_pbn_dataset(info):
   info['new_artist_name'] = info['artist_name']
   info = fix_names_with_digits(info)

@@ -36,12 +36,12 @@ def vanilla(
     distributed_strategy,
     args,
 ):
-  SEED, B_TRAIN, S, P, W, BACKBONE, EPOCHS_HE, EPOCHS_FT, TARGET, NAME, WEIGHTS, WEIGHTS_EXIST = get_extractor_params(args)
+  SEED, B_TRAIN, S, P, POS, W, BACKBONE, EPOCHS_HE, EPOCHS_FT, TARGET, NAME, WEIGHTS, WEIGHTS_EXIST = get_extractor_params(args)
 
   train_info, valid_info = train_test_split(info, test_size=args.backbone_valid_split, stratify=info[TARGET], random_state=SEED)
 
-  train_ds = datasets.pbn.PbNPatchesSequence(train_info, train_info[TARGET], B_TRAIN, patch_size=S, patches=P, augment=True)
-  valid_ds = datasets.pbn.PbNPatchesSequence(valid_info, valid_info[TARGET], B_TRAIN, patch_size=S, patches=P, target_encoder=train_ds.target_encoder)
+  train_ds = datasets.pbn.PbNPatchesSequence(train_info, train_info[TARGET], B_TRAIN, patch_size=S, patches=P, positives=1, augment=True)
+  valid_ds = datasets.pbn.PbNPatchesSequence(valid_info, valid_info[TARGET], B_TRAIN, patch_size=S, patches=P, positives=1, target_encoder=train_ds.target_encoder)
   C = train_ds.painters
   print(f"painters={len(C)} train={len(train_info)} train_steps={len(train_ds)} valid={len(valid_info)} train_steps={len(valid_ds)}")
 
@@ -106,16 +106,12 @@ def supcon(
 ):
   from core import supcon
 
-  SEED, B_TRAIN, S, P, W, BACKBONE, EPOCHS_HE, EPOCHS_FT, TARGET, NAME, WEIGHTS, WEIGHTS_EXIST = get_extractor_params(args)
-
-  if EPOCHS_HE > 0:
-    print(f"SupCon requires training from all layers. Setting backbone_train_epochs = 0 (previous = {EPOCHS_HE}).")
-    EPOCHS_HE = 0
+  SEED, B_TRAIN, S, P, POS, W, BACKBONE, EPOCHS_HE, EPOCHS_FT, TARGET, NAME, WEIGHTS, WEIGHTS_EXIST = get_extractor_params(args)
 
   train_info, valid_info = train_test_split(info, test_size=args.backbone_valid_split, stratify=info[TARGET], random_state=SEED)
 
-  train_ds = datasets.pbn.PbNPatchesSequence(train_info, train_info[TARGET], B_TRAIN, patch_size=S, patches=P, augment=True)
-  valid_ds = datasets.pbn.PbNPatchesSequence(valid_info, valid_info[TARGET], B_TRAIN, patch_size=S, patches=P, target_encoder=train_ds.target_encoder)
+  train_ds = datasets.pbn.PbNPatchesSequence(train_info, train_info[TARGET], B_TRAIN, patch_size=S, patches=P, positives=1, augment=True)
+  valid_ds = datasets.pbn.PbNPatchesSequence(valid_info, valid_info[TARGET], B_TRAIN, patch_size=S, patches=P, positives=1, target_encoder=train_ds.target_encoder)
 
   C = train_ds.painters
   print(f"painters={len(C)} train={len(train_info)} train_steps={len(train_ds)} valid={len(valid_info)} train_steps={len(valid_ds)}")
@@ -124,6 +120,20 @@ def supcon(
     backbone_fn = getattr(tf.keras.applications, BACKBONE)
     backbone = backbone_fn(include_top=False, weights="imagenet", input_shape=[S, S, 3], pooling=None)
     model = supcon.supcon_encoder(backbone.input, backbone, name=NAME)
+  
+  if EPOCHS_HE > 0:
+    backbone.trainable = False
+    
+    with distributed_strategy.scope():
+      learning_rate = args.backbone_train_lr
+
+      model.compile(
+        optimizer=build_optimizer(args.backbone_optimizer, learning_rate),
+        loss=supcon.SupervisedContrastiveLoss(temperature=args.backbone_train_supcon_temperature),
+        jit_compile=args.jit_compile,
+      )
+
+      model.fit(train_ds, validation_data=valid_ds, epochs=EPOCHS_HE, workers=W, verbose=1)
 
   if EPOCHS_FT > 0:
     print("=" * 65)
@@ -137,7 +147,6 @@ def supcon(
         args.backbone_freezebn,
       )
 
-      # learning_rate=args.backbone_finetune_lr
       learning_rate = tf.keras.optimizers.schedules.CosineDecay(
         initial_learning_rate=args.backbone_finetune_lr,
         decay_steps=len(train_ds) * EPOCHS_FT,
@@ -169,11 +178,7 @@ def supcon_mh(
 ):
   from core import supcon
 
-  SEED, B_TRAIN, S, P, W, BACKBONE, EPOCHS_HE, EPOCHS_FT, TARGET, NAME, WEIGHTS, WEIGHTS_EXIST = get_extractor_params(args)
-
-  if EPOCHS_HE > 0:
-    print(f"SupCon-MultiHead requires training from all layers. Setting backbone_train_epochs = 0 (previous = {EPOCHS_HE}).")
-    EPOCHS_HE = 0
+  SEED, B_TRAIN, S, P, POS, W, BACKBONE, EPOCHS_HE, EPOCHS_FT, TARGET, NAME, WEIGHTS, WEIGHTS_EXIST = get_extractor_params(args)
 
   train_info, valid_info = train_test_split(info, test_size=args.backbone_valid_split, stratify=info[TARGET], random_state=SEED)
 
@@ -181,8 +186,8 @@ def supcon_mh(
   train_targets = {t: train_info[t] for t in TARGETS}
   valid_targets = {t: valid_info[t] for t in TARGETS}
 
-  train_ds = datasets.pbn.PbNPatchesSequence(train_info, train_targets, B_TRAIN, patch_size=S, patches=P, augment=True)
-  valid_ds = datasets.pbn.PbNPatchesSequence(valid_info, valid_targets, B_TRAIN, patch_size=S, patches=P, target_encoder=train_ds.target_encoder)
+  train_ds = datasets.pbn.PbNPatchesSequence(train_info, train_targets, B_TRAIN, patch_size=S, patches=P, positives=1, augment=True)
+  valid_ds = datasets.pbn.PbNPatchesSequence(valid_info, valid_targets, B_TRAIN, patch_size=S, patches=P, positives=1, target_encoder=train_ds.target_encoder)
   C = train_ds.painters
   print(f"painters={len(C)} train={len(train_info)} train_steps={len(train_ds)} valid={len(valid_info)} train_steps={len(valid_ds)}")
 
@@ -190,6 +195,23 @@ def supcon_mh(
     backbone_fn = getattr(tf.keras.applications, BACKBONE)
     backbone = backbone_fn(include_top=False, weights="imagenet", input_shape=[S, S, 3], pooling=None)
     model = supcon.supcon_encoder_mh(backbone.input, backbone, name=NAME)
+
+  if EPOCHS_HE > 0:
+    backbone.trainable = False
+    
+    with distributed_strategy.scope():
+      model.compile(
+        optimizer=build_optimizer(args.backbone_optimizer, args.backbone_train_lr),
+        loss={
+          'painter': supcon.SupervisedContrastiveLoss(temperature=args.backbone_train_supcon_temperature),
+          'style': supcon.SupervisedContrastiveLoss(temperature=args.backbone_train_supcon_temperature),
+          'genre': supcon.SupervisedContrastiveLoss(temperature=args.backbone_train_supcon_temperature),
+        },
+        loss_weights={'painter': 0.4, 'style': 0.3, 'genre': 0.3},
+        jit_compile=args.jit_compile,
+      )
+
+      model.fit(train_ds, validation_data=valid_ds, epochs=EPOCHS_HE, workers=W, verbose=1)
 
   if EPOCHS_FT > 0:
     print("=" * 65)
@@ -223,7 +245,7 @@ def supcon_mh(
     else:
       callbacks = _callbacks(model, "finetune", args) + [
         tf.keras.callbacks.EarlyStopping(patience=10, verbose=1),
-        tf.keras.callbacks.ModelCheckpoint(WEIGHTS, save_weights_only=True, save_best_only=True, verbose=1, monitor="val_painter_project_head_loss"),
+        tf.keras.callbacks.ModelCheckpoint(WEIGHTS, save_weights_only=True, save_best_only=True, verbose=1, monitor="val_painter_proj2_loss"),
       ]
       model.fit(train_ds, validation_data=valid_ds, epochs=EPOCHS_FT, callbacks=callbacks, workers=W, verbose=1)
 
@@ -264,7 +286,7 @@ def inference(model, info, distributed_strategy, args, NAME, WEIGHTS, TARGET, wo
       continue
 
     info_part = info.iloc[part*SPLITS:(part+1)*SPLITS]
-    infer_ds = datasets.pbn.PbNPatchesSequence(info_part, info_part[TARGET], B, patch_size=S, patches=P, augment=False)
+    infer_ds = datasets.pbn.PbNPatchesSequence(info_part, info_part[TARGET], B, patch_size=S, patches=P, positives=1, augment=False)
     print(f"Predicting {len(infer_ds)} batches (samples={len(info_part)}/{len(info)}, part={part+1}/{parts})", flush=True)
 
     features = []

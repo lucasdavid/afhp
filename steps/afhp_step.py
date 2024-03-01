@@ -22,7 +22,7 @@ def run(
   Q = 10 # Query (samples p/ query)
   R = 3  # Repetitions
 
-  _, _, _, _, _, _, _, _, _, ENC_NAME, _, _ = get_extractor_params(args)
+  ENC_NAME = get_extractor_params(args)[-3]
   FEATURES_LAYER = args.backbone_features_layer
   EXTRACTOR_NAME = f"{ENC_NAME}_{FEATURES_LAYER}"
 

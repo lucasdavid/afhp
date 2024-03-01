@@ -131,7 +131,7 @@ dmypy.json
 logs/
 checkpoints
 data
-data**
+data/**
 notebooks**
 experiments
 experiments**

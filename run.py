@@ -41,18 +41,19 @@ parser.add_argument("--preds_dir", default="./experiments/predictions/")
 parser.add_argument("--backbone_valid_split", type=float, default=0.1)
 parser.add_argument("--backbone_valid_seed", type=int, default=581)
 parser.add_argument("--backbone_train_workers", type=int, default=8)
-parser.add_argument("--backbone_optimizer", default="adam", type=str, choices=["sgd", "adam", "momentum"])
+parser.add_argument("--backbone_optimizer", default="momentum", type=str, choices=["sgd", "adam", "momentum"])
 
 parser.add_argument("--backbone_train_epochs", default=5, type=int)
-parser.add_argument("--backbone_train_lr", default=0.001, type=float)
+parser.add_argument("--backbone_train_lr", default=0.01, type=float)
 parser.add_argument("--backbone_finetune_epochs", default=100, type=int)
 parser.add_argument("--backbone_freezebn", default=False, type=str2bool)
 parser.add_argument("--backbone_finetune_layers", default="all")  # ResNet Arch => first: "conv1_pad" b4: "conv4_block1_preact_bn"
-parser.add_argument("--backbone_finetune_lr", default=0.0001, type=float)
-parser.add_argument("--backbone_train_supcon_temperature", default=0.05, type=float)
+parser.add_argument("--backbone_finetune_lr", default=0.01, type=float)
+parser.add_argument("--backbone_train_supcon_temperature", default=0.1, type=float)
 
 ## Features (Backbone) Inference
 parser.add_argument("--patches_train", default=2, type=int)  # 2 random crops are the default in SupCon (arxiv 2004.11362).
+parser.add_argument("--positives_train", default=1, type=int)  # Positives from different sources.
 parser.add_argument("--patches_test", default=20, type=int)  # 2 random crops are the default in SupCon (arxiv 2004.11362).
 parser.add_argument("--batch_test", default=2, type=int)  # Usually small because `patches_test` is large.
 parser.add_argument("--features_parts", default=4, type=int)  # default: 4

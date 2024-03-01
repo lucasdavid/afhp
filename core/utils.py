@@ -25,6 +25,7 @@ def get_extractor_params(args):
   B_TRAIN = args.batch_size
   S = args.patch_size
   P = args.patches_train
+  POS = args.positives_train
   W = args.backbone_train_workers
   BACKBONE = args.backbone_architecture
   EPOCHS_HE = args.backbone_train_epochs
@@ -37,7 +38,7 @@ def get_extractor_params(args):
   WEIGHTS = os.path.join(args.weights_dir, NAME + ".h5")
   WEIGHTS_EXIST = os.path.exists(WEIGHTS)
 
-  return SEED, B_TRAIN, S, P, W, BACKBONE, EPOCHS_HE, EPOCHS_FT, TARGET, NAME, WEIGHTS, WEIGHTS_EXIST
+  return SEED, B_TRAIN, S, P, POS, W, BACKBONE, EPOCHS_HE, EPOCHS_FT, TARGET, NAME, WEIGHTS, WEIGHTS_EXIST
 
 
 def get_afhp_params(args):

@@ -44,18 +44,19 @@ STRATEGY=ce    # ce, supcon, supcon_mh
 BACKBONE=ResNet50V2  # ResNet50
 BACKBONE_FEATURES_LAYER=avg_pool
 
-PATCHES_TRAIN=2   # 2 for each sample, ensuring two samples with the class in a batch, necessary for SupCon.
+PATCHES_TRAIN=2   # 2 patches for each sample, ensuring two samples with the class in a batch, necessary for SupCon.
+POSITIVES_TRAIN=2 # 2 paintings for each painter, ensuring two samples of the same class in a batch, necessary for SupCon.
 PATCHES_INFER=20  # patches extracted for each sample during inference.
 PATCH_SIZE=224
 FEATURES_PARTS=4
 
-BATCH_TRAIN=128   # True batch = BATCH_TRAIN * PATCHES_TRAIN = 32 * 2 = 64
+BATCH_TRAIN=128   # True batch = BATCH_TRAIN * PATCHES_TRAIN * POSITIVES_TRAIN = 32 * 2 * 2 = 128
 BATCH_TEST=2      # True batch = BATCH_TRAIN * PATCHES_INFER = 2 * 20 = 40
 
 EPOCHS_HE=0
 EPOCHS_FT=100
-LR_HE=0.001
-LR_FT=0.001
+LR_HE=0.01
+LR_FT=0.01
 
 EPOCHS_AF=20
 LR_AF=0.00001
@@ -71,7 +72,7 @@ OVERRIDE=false
 function build_arguments() {
   echo "--override $OVERRIDE --mixed_precision $MIXED_PRECISION --jit_compile $JIT_COMPILE \
     --data_split $DATA_SPLIT --patch_size $PATCH_SIZE --batch_size $BATCH_TRAIN --batch_test $BATCH_TEST \
-    --patches_train $PATCHES_TRAIN --patches_test $PATCHES_INFER \
+    --patches_train $PATCHES_TRAIN --patches_test $PATCHES_INFER --positives_train $POSITIVES_TRAIN \
     --features_parts $FEATURES_PARTS --backbone_train_workers $WORKERS \
     --strategy $STRATEGY --backbone_architecture $BACKBONE --backbone_features_layer $BACKBONE_FEATURES_LAYER \
     --backbone_train_epochs    $EPOCHS_HE --backbone_train_lr    $LR_HE \
@@ -113,7 +114,7 @@ function run_all_local() {
   # run_local
 
   BACKBONE_FEATURES_LAYER=painter_proj1
-  EPOCHS_HE=0
+  EPOCHS_HE=5
   EPOCHS_FT=100
   
   STRATEGY=supcon
